@@ -9,21 +9,21 @@ output: html_document
 
 #### Load libraries
 ```{r results='hide', message=FALSE, warning=FALSE}
-library(GEOquery)
-library(tidyverse)
-library(janitor)
-library(DESeq2)
-library(vsn)
-library(pheatmap)
-library(RColorBrewer)
-library(Glimma)
-library(EnhancedVolcano)
-library(GO.db)
-library(GOstats)
-library(clusterProfiler)
-
+library(GEOquery) # import datasets from GEO
+library(tidyverse) # data wrangling & visualization
+library(janitor) # data cleaning
+library(DESeq2) # Diverential gene expression analysis
+library(vsn) # Transformation
+library(pheatmap) # heatmaps
+library(RColorBrewer) # Color themes
+library(Glimma) # Interactive DEG visualization
+library(EnhancedVolcano) # Pleasing volcano plots
+library(GO.db) # Gene ontology 
+library(GOstats) # Gene ontology
+library(clusterProfiler) # over representation/gene enrichment
 ```
 
+# Relevant resources
 
 https://bioconductor.org/packages/release/bioc/html/ReportingTools.html
 
@@ -41,83 +41,80 @@ https://github.com/price0416/DEvis
 
 ### Load/Clean Counts table & Metadata
 ```{r}
+# Using GEOquery will require some troubleshooting as the GSE submission for this dataset lacked feature data
 
-geneCounts <- read.csv("Data/GSE183973_bulkRNA_gene_counts.csv", 
-                       check.names = FALSE)
+# Instead the CSV files for gene counts and metadata can be download directly from GEO and saved locally. 
 
-metadata <- read.csv("Data/GSE183973_metadata_samples.csv", 
-                      check.names = FALSE)
+geneCounts <- read.csv("Data/GSE183973_bulkRNA_gene_counts.csv",
+  check.names = FALSE
+)
+
+metadata <- read.csv("Data/GSE183973_metadata_samples.csv",
+  check.names = FALSE
+)
 
 # Define missing column names
 colnames(geneCounts)[1] <- "genes"
+
 head(colnames(geneCounts))
 
 colnames(metadata)[1] <- "samples"
+
 head(metadata)
 
-# Set column index 
+# Set column index
 row.names(geneCounts) <- geneCounts$genes
+
 head(row.names(geneCounts))
-
-
-# Alternate download method
-
-gse <- getGEO("GSE188945", GSEMatric = TRUE)
-
-GSM <- getgeo("gsm569217   ")
-
-OPTIONS(TIMEOUT = MAX(500, GetOption("")))
-
-
-#AIC model
 ```
 
 
 ### Merge Counts & Metadata
 ```{r}
-
-countsLong <- geneCounts |> 
+# Pivot DF for exploratory data analysis
+countsLong <- geneCounts |>
   pivot_longer(cols = !genes, names_to = "samples", values_to = "counts")
+
 head(countsLong)
 
-featureMatrix <- countsLong |> 
+featureMatrix <- countsLong |>
   left_join(metadata, by = c("samples" = "samples"))
-head(featureMatrix)
 
+head(featureMatrix)
 ```
 
 
-### Exploratory data analysis
+### Exploratory data analysis (with randomly selected genes, for now)
 ```{r eval=FALSE}
 # barplot
-featureMatrix |> 
-  filter(genes == "CD101") |> 
+featureMatrix |>
+  filter(genes == "CD101") |>
   ggplot(aes(x = samples, y = counts, fill = cell_type)) +
   geom_col() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # density plot
-featureMatrix |> 
-  filter(genes == "FTL") |> 
+featureMatrix |>
+  filter(genes == "FTL") |>
   ggplot(aes(x = counts, fill = cell_type)) +
   geom_density(alpha = 0.5)
 
 # boxplot
-featureMatrix |> 
-  filter(genes == "LYZ") |> 
+featureMatrix |>
+  filter(genes == "LYZ") |>
   ggplot(aes(x = cell_type, y = counts)) +
   geom_boxplot()
 
-# voilinplot 
-featureMatrix |> 
-  filter(genes == "CD74") |> 
+# voilinplot
+featureMatrix |>
+  filter(genes == "CD74") |>
   ggplot(aes(x = cell_type, y = counts)) +
   geom_violin()
 
 # scatterplot
-featureMatrix |> 
-  filter(genes == "FTL" | genes == "LYZ") |> 
-  pivot_wider(names_from = genes, values_from = counts) |> 
+featureMatrix |>
+  filter(genes == "FTL" | genes == "LYZ") |>
+  pivot_wider(names_from = genes, values_from = counts) |>
   ggplot(aes(x = FTL, y = LYZ, color = cell_type)) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE)
@@ -125,19 +122,17 @@ featureMatrix |>
 # heatmap
 genesOfInterest <- c("FTL", "FN1", "CD74", "LYZ")
 
-featureMatrix |>  
-  filter(genes %in% genesOfInterest) |> 
+featureMatrix |>
+  filter(genes %in% genesOfInterest) |>
   ggplot(aes(x = samples, y = genes, fill = counts)) +
   geom_tile() +
   scale_fill_gradient(low = "white", high = "red") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
 ```
 
 
 ### Prep DESeq analysis
 ```{r}
-
 # Remove genes column (gene names retained as index)
 Counts <- geneCounts |>
   select(-genes)
@@ -147,133 +142,134 @@ desired_order <- metadata$samples
 
 Counts <- Counts[, desired_order]
 
-# Confirm match
+# Confirm matching column and row names (required for DESeq2)
 all(colnames(Counts) %in% metadata$samples)
 
 all(colnames(Counts) == metadata$samples)
-
 ```
 
 
 ### Set DESeq parameters 
 ```{r}
-dds <- DESeqDataSetFromMatrix(countData = Counts, 
-                       colData = metadata, 
-                       design = ~ cell_type + patient_group)
+# Define design matrix for DESeq2
+dds <- DESeqDataSetFromMatrix(
+  countData = Counts,
+  colData = metadata,
+  design = ~ cell_type + patient_group
+)
+
 dds
 
-# Prefiltering : remove low expressed genes
+# remove low expressed genes
 keep <- rowSums(counts(dds)) >= 10
 
-dds <- dds[keep,]
+dds <- dds[keep, ]
 
-# set factor level 
-## Note: COLLAPSE TECHNICAL REPLICATES
+# set factor level (reference group)
 dds$patient_group <- relevel(dds$patient_group, ref = "non_smoker")
-
 ```
 
 
 ### Transformations and Variance
 ```{r}
+# Compare various transformations and their impact on data variance. 
+vsd <- vst(dds, blind = FALSE)
 
-vsd <- vst(dds, blind=FALSE)
-
-rld <- rlog(dds, blind=FALSE)
-
+rld <- rlog(dds, blind = FALSE)
 
 ntd <- normTransform(dds)
+
 
 meanSdPlot(assay(ntd))
 
 meanSdPlot(assay(vsd))
 
 meanSdPlot(assay(rld))
-
-
 ```
 
 
 ### Heatmaps
 ```{r}
+select <- order(rowMeans(counts(dds, normalized = FALSE)),
+  decreasing = TRUE
+)[1:20]
 
-select <- order(rowMeans(counts(dds, normalized=FALSE)),
-                decreasing=TRUE)[1:20]
+df <- as.data.frame(colData(dds)[, c("patient_group", "cell_type")])
 
-df <- as.data.frame(colData(dds)[,c("patient_group","cell_type")])
+pheatmap(assay(ntd)[select, ],
+  cluster_rows = FALSE, show_rownames = FALSE,
+  cluster_cols = FALSE, annotation_col = df
+)
 
-pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
-         cluster_cols=FALSE, annotation_col=df)
+pheatmap(assay(vsd)[select, ],
+  cluster_rows = FALSE, show_rownames = FALSE,
+  cluster_cols = FALSE, annotation_col = df
+)
 
-pheatmap(assay(vsd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
-         cluster_cols=FALSE, annotation_col=df)
-
-pheatmap(assay(rld)[select,], cluster_rows=FALSE, show_rownames=FALSE,
-         cluster_cols=FALSE, annotation_col=df)
+pheatmap(assay(rld)[select, ],
+  cluster_rows = FALSE, show_rownames = FALSE,
+  cluster_cols = FALSE, annotation_col = df
+)
 
 sampleDists <- dist(t(assay(vsd)))
 
 
 
-
-
 sampleDistMatrix <- as.matrix(sampleDists)
 
-rownames(sampleDistMatrix) <- paste(vsd$cell_type, vsd$patient_group, sep="-")
+rownames(sampleDistMatrix) <- paste(vsd$cell_type, vsd$patient_group, sep = "-")
 
 colnames(sampleDistMatrix) <- NULL
 
-colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
 
 pheatmap(sampleDistMatrix,
-         clustering_distance_rows=sampleDists,
-         clustering_distance_cols=sampleDists,
-         col=colors)
+  clustering_distance_rows = sampleDists,
+  clustering_distance_cols = sampleDists,
+  col = colors
+)
 ```
 
 
 ### PCA plots
 ```{r}
+plotPCA(vsd, intgroup = c("cell_type", "patient_group"))
 
-plotPCA(vsd, intgroup=c("cell_type", "patient_group"))
-
-plotPCA(vsd, intgroup=c("cell_type"))
+plotPCA(vsd, intgroup = c("cell_type"))
 
 
-pcaData <- plotPCA(vsd, 
-                   intgroup=c("cell_type", "patient_group"), 
-                   returnData=TRUE)
+pcaData <- plotPCA(vsd,
+  intgroup = c("cell_type", "patient_group"),
+  returnData = TRUE
+)
 
 percentVar <- round(100 * attr(pcaData, "percentVar"))
 
-ggplot(pcaData, aes(PC1, PC2, color=patient_group, shape=cell_type)) +
-  geom_point(size=3) +
-  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
-  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+ggplot(pcaData, aes(PC1, PC2, color = patient_group, shape = cell_type)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
   coord_fixed()
-
 ```
 
 
 ### Interactive Plots
 ```{r eval=FALSE}
-# Computationally expensive Knit 
+# Computationally expensive Knit
 glimmaMDS(dds)
 
-dds <- DESeq(dds, quiet=TRUE)
+dds <- DESeq(dds, quiet = TRUE)
 
-glimmaMA(dds, groups=metadata$patient_group)
+glimmaMA(dds, groups = metadata$patient_group)
 
 # creates ma-plot.html in working directory
 # link to it in Rmarkdown using [MA-plot](ma-plot.html)
 #     htmlwidgets::saveWidget(glimmaMA(dds), "ma-plot.html")
-
 ```
 
 
 ### Run DESeq Analysis
 ```{r}
-
 dds <- DESeq(dds)
 
 resultsNames(dds)
@@ -284,54 +280,51 @@ res
 summary(res)
 
 ##### Trial various contrasts #####
-
 ```
 
 
 ### Plot DE genes results
 ```{r}
-
 plotMA(res)
 
 
 EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-    y = 'pvalue',
-    title = 'Smoker vs Non-smoker',
-    pCutoff = 1e-05,
-    FCcutoff = 0.5,
-    pointSize = 2,
-    labSize = 6.0,
-    colAlpha = 0.3)
+  lab = rownames(res),
+  x = "log2FoldChange",
+  y = "pvalue",
+  title = "Smoker vs Non-smoker",
+  pCutoff = 1e-05,
+  FCcutoff = 0.5,
+  pointSize = 2,
+  labSize = 6.0,
+  colAlpha = 0.3
+)
 
 
 
 # plot chosen genes per chosen conditions
-plotCounts(dds, gene=which.min(res$padj), intgroup="patient_group")
+plotCounts(dds, gene = which.min(res$padj), intgroup = "patient_group")
 
-plotCounts(dds, gene=which.min(res$padj), intgroup=c("patient_group", "cell_type"))
+plotCounts(dds, gene = which.min(res$padj), intgroup = c("patient_group", "cell_type"))
 
-plotCounts(dds, gene="CD101", intgroup="patient_group")
+plotCounts(dds, gene = "CD101", intgroup = "patient_group")
 
-p <- plotCounts(dds, 
-                gene=which.min(res$padj), 
-                intgroup=c("patient_group", "cell_type"), 
-                returnData = TRUE)
+p <- plotCounts(dds,
+  gene = which.min(res$padj),
+  intgroup = c("patient_group", "cell_type"),
+  returnData = TRUE
+)
 
-ggplot(p, aes(x=patient_group, y=count, color = cell_type)) + 
-  geom_point(position=position_jitter(w=0.1,h=0)) + 
-  scale_y_log10(breaks=c(25,100,400))
-
-
+ggplot(p, aes(x = patient_group, y = count, color = cell_type)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0)) +
+  scale_y_log10(breaks = c(25, 100, 400))
 ```
 
 
 ### Subset results
 ```{r}
-
 # resSmall <- results(dds, alpha = 0.01)
- 
+
 # summary(resSmall)
 
 # Extract differentially expressed genes
@@ -345,33 +338,28 @@ DEG <- DE_genes@rownames
 
 ### Plot subset results
 ```{r}
-
 plotMA(DE_genes)
 
-featureMatrix |>  
-  filter(genes %in% DEG) |> 
+featureMatrix |>
+  filter(genes %in% DEG) |>
   ggplot(aes(x = samples, y = genes, fill = counts)) +
   geom_tile() +
   scale_fill_gradient(low = "white", high = "red") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-
 ```
 
 
-### Enrichment/Over-representation analysis
+### Enrichment/Over-representation analysis (Incomplete)
 https://yulab-smu.top/biomedical-knowledge-mining-book/index.html
-```{r}
-# ("clusterProfiler")
-DEG for GO
-GSEA for Norms
-# ("ChIPseeker")
-# ("DOSE")
-# ("enrichplot")
-# ("GOSemSim")
-# ("meshes")
-# ("ReactomePA")
 
-```
+Gene Ontology requires list of genes counts
+Gene set enrichment requires normalized counts
 
-
+Packages to test:
+clusterProfiler
+ChIPseeker
+DOSE
+enrichplot
+GOSemSim
+meshes
+ReactomePA
