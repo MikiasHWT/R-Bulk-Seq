@@ -4,8 +4,8 @@ author: "Mikias HW"
 date: "2024-03-15"
 output: html_document
 ---
-#***GSE183973*** Re-analysis
-## Bulk Seq :Characterization of two lung alveolar macrophages in bronchoalveolar lavage fluid (BALF) cells in non-fumer healthy, fumer and COPD patients
+#***GSE183973*** analysis
+## Bulk Seq :Characterization of two lung alveolar macrophages in bronchoalveolar lavage fluid (BALF) cells in non-smoker healthy, smoker and COPD patients
 
 #### Load libraries
 ```{r results='hide', message=FALSE, warning=FALSE}
