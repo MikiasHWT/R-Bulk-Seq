@@ -1,0 +1,377 @@
+---
+title: "GeoData"
+author: "Mikias HW"
+date: "2024-03-15"
+output: html_document
+---
+#***GSE183973*** Re-analysis
+## Bulk Seq :Characterization of two lung alveolar macrophages in bronchoalveolar lavage fluid (BALF) cells in non-fumer healthy, fumer and COPD patients
+
+#### Load libraries
+```{r results='hide', message=FALSE, warning=FALSE}
+library(GEOquery)
+library(tidyverse)
+library(janitor)
+library(DESeq2)
+library(vsn)
+library(pheatmap)
+library(RColorBrewer)
+library(Glimma)
+library(EnhancedVolcano)
+library(GO.db)
+library(GOstats)
+library(clusterProfiler)
+
+```
+
+
+https://bioconductor.org/packages/release/bioc/html/ReportingTools.html
+
+https://bioconductor.org/packages/release/bioc/html/regionReport.html
+
+https://bioconductor.org/packages/release/bioc/html/Glimma.html
+
+https://bioconductor.org/packages/release/bioc/html/pcaExplorer.html
+
+https://gist.github.com/federicomarini/4a543eebc7e7091d9169111f76d59de1
+
+https://github.com/price0416/DEvis
+
+
+
+### Load/Clean Counts table & Metadata
+```{r}
+
+geneCounts <- read.csv("Data/GSE183973_bulkRNA_gene_counts.csv", 
+                       check.names = FALSE)
+
+metadata <- read.csv("Data/GSE183973_metadata_samples.csv", 
+                      check.names = FALSE)
+
+# Define missing column names
+colnames(geneCounts)[1] <- "genes"
+head(colnames(geneCounts))
+
+colnames(metadata)[1] <- "samples"
+head(metadata)
+
+# Set column index 
+row.names(geneCounts) <- geneCounts$genes
+head(row.names(geneCounts))
+
+
+# Alternate download method
+
+gse <- getGEO("GSE188945", GSEMatric = TRUE)
+
+GSM <- getgeo("gsm569217   ")
+
+OPTIONS(TIMEOUT = MAX(500, GetOption("")))
+
+
+#AIC model
+```
+
+
+### Merge Counts & Metadata
+```{r}
+
+countsLong <- geneCounts |> 
+  pivot_longer(cols = !genes, names_to = "samples", values_to = "counts")
+head(countsLong)
+
+featureMatrix <- countsLong |> 
+  left_join(metadata, by = c("samples" = "samples"))
+head(featureMatrix)
+
+```
+
+
+### Exploratory data analysis
+```{r eval=FALSE}
+# barplot
+featureMatrix |> 
+  filter(genes == "CD101") |> 
+  ggplot(aes(x = samples, y = counts, fill = cell_type)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# density plot
+featureMatrix |> 
+  filter(genes == "FTL") |> 
+  ggplot(aes(x = counts, fill = cell_type)) +
+  geom_density(alpha = 0.5)
+
+# boxplot
+featureMatrix |> 
+  filter(genes == "LYZ") |> 
+  ggplot(aes(x = cell_type, y = counts)) +
+  geom_boxplot()
+
+# voilinplot 
+featureMatrix |> 
+  filter(genes == "CD74") |> 
+  ggplot(aes(x = cell_type, y = counts)) +
+  geom_violin()
+
+# scatterplot
+featureMatrix |> 
+  filter(genes == "FTL" | genes == "LYZ") |> 
+  pivot_wider(names_from = genes, values_from = counts) |> 
+  ggplot(aes(x = FTL, y = LYZ, color = cell_type)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+
+# heatmap
+genesOfInterest <- c("FTL", "FN1", "CD74", "LYZ")
+
+featureMatrix |>  
+  filter(genes %in% genesOfInterest) |> 
+  ggplot(aes(x = samples, y = genes, fill = counts)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+### Prep DESeq analysis
+```{r}
+
+# Remove genes column (gene names retained as index)
+Counts <- geneCounts |>
+  select(-genes)
+
+# Match Counts column names and Metadata row names
+desired_order <- metadata$samples
+
+Counts <- Counts[, desired_order]
+
+# Confirm match
+all(colnames(Counts) %in% metadata$samples)
+
+all(colnames(Counts) == metadata$samples)
+
+```
+
+
+### Set DESeq parameters 
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = Counts, 
+                       colData = metadata, 
+                       design = ~ cell_type + patient_group)
+dds
+
+# Prefiltering : remove low expressed genes
+keep <- rowSums(counts(dds)) >= 10
+
+dds <- dds[keep,]
+
+# set factor level 
+## Note: COLLAPSE TECHNICAL REPLICATES
+dds$patient_group <- relevel(dds$patient_group, ref = "non_smoker")
+
+```
+
+
+### Transformations and Variance
+```{r}
+
+vsd <- vst(dds, blind=FALSE)
+
+rld <- rlog(dds, blind=FALSE)
+
+
+ntd <- normTransform(dds)
+
+meanSdPlot(assay(ntd))
+
+meanSdPlot(assay(vsd))
+
+meanSdPlot(assay(rld))
+
+
+```
+
+
+### Heatmaps
+```{r}
+
+select <- order(rowMeans(counts(dds, normalized=FALSE)),
+                decreasing=TRUE)[1:20]
+
+df <- as.data.frame(colData(dds)[,c("patient_group","cell_type")])
+
+pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=df)
+
+pheatmap(assay(vsd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=df)
+
+pheatmap(assay(rld)[select,], cluster_rows=FALSE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=df)
+
+sampleDists <- dist(t(assay(vsd)))
+
+
+
+
+
+sampleDistMatrix <- as.matrix(sampleDists)
+
+rownames(sampleDistMatrix) <- paste(vsd$cell_type, vsd$patient_group, sep="-")
+
+colnames(sampleDistMatrix) <- NULL
+
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+```
+
+
+### PCA plots
+```{r}
+
+plotPCA(vsd, intgroup=c("cell_type", "patient_group"))
+
+plotPCA(vsd, intgroup=c("cell_type"))
+
+
+pcaData <- plotPCA(vsd, 
+                   intgroup=c("cell_type", "patient_group"), 
+                   returnData=TRUE)
+
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+ggplot(pcaData, aes(PC1, PC2, color=patient_group, shape=cell_type)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+```
+
+
+### Interactive Plots
+```{r eval=FALSE}
+# Computationally expensive Knit 
+glimmaMDS(dds)
+
+dds <- DESeq(dds, quiet=TRUE)
+
+glimmaMA(dds, groups=metadata$patient_group)
+
+# creates ma-plot.html in working directory
+# link to it in Rmarkdown using [MA-plot](ma-plot.html)
+#     htmlwidgets::saveWidget(glimmaMA(dds), "ma-plot.html")
+
+```
+
+
+### Run DESeq Analysis
+```{r}
+
+dds <- DESeq(dds)
+
+resultsNames(dds)
+
+res <- results(dds)
+res
+
+summary(res)
+
+##### Trial various contrasts #####
+
+```
+
+
+### Plot DE genes results
+```{r}
+
+plotMA(res)
+
+
+EnhancedVolcano(res,
+    lab = rownames(res),
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    title = 'Smoker vs Non-smoker',
+    pCutoff = 1e-05,
+    FCcutoff = 0.5,
+    pointSize = 2,
+    labSize = 6.0,
+    colAlpha = 0.3)
+
+
+
+# plot chosen genes per chosen conditions
+plotCounts(dds, gene=which.min(res$padj), intgroup="patient_group")
+
+plotCounts(dds, gene=which.min(res$padj), intgroup=c("patient_group", "cell_type"))
+
+plotCounts(dds, gene="CD101", intgroup="patient_group")
+
+p <- plotCounts(dds, 
+                gene=which.min(res$padj), 
+                intgroup=c("patient_group", "cell_type"), 
+                returnData = TRUE)
+
+ggplot(p, aes(x=patient_group, y=count, color = cell_type)) + 
+  geom_point(position=position_jitter(w=0.1,h=0)) + 
+  scale_y_log10(breaks=c(25,100,400))
+
+
+```
+
+
+### Subset results
+```{r}
+
+# resSmall <- results(dds, alpha = 0.01)
+ 
+# summary(resSmall)
+
+# Extract differentially expressed genes
+DE_genes <- subset(res, padj < 0.01)
+
+summary(DE_genes)
+
+DEG <- DE_genes@rownames
+```
+
+
+### Plot subset results
+```{r}
+
+plotMA(DE_genes)
+
+featureMatrix |>  
+  filter(genes %in% DEG) |> 
+  ggplot(aes(x = samples, y = genes, fill = counts)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+
+### Enrichment/Over-representation analysis
+https://yulab-smu.top/biomedical-knowledge-mining-book/index.html
+```{r}
+# ("clusterProfiler")
+DEG for GO
+GSEA for Norms
+# ("ChIPseeker")
+# ("DOSE")
+# ("enrichplot")
+# ("GOSemSim")
+# ("meshes")
+# ("ReactomePA")
+
+```
+
+
