@@ -363,3 +363,12 @@ enrichplot
 GOSemSim
 meshes
 ReactomePA
+
+
+
+
+### Session Info
+```{r}
+sessionInfo()
+
+```
