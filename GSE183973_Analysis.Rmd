@@ -40,7 +40,7 @@ https://github.com/price0416/DEvis
 
 ### Load/Clean counts table & Metadata
 
-Note: Using GEOquery will require some troubleshooting as the GSE submission for this dataset lacked feature information. Instead the CSV files for gene counts and metadata can be download directly from [GEO](https://www.ncbi.nlm.nih.gov/geo/) and saved locally.
+***Note:*** Using GEOquery will require some troubleshooting as the GSE submission for this dataset lacked feature information. Instead the CSV files for gene counts and metadata can be download directly from [GEO](https://www.ncbi.nlm.nih.gov/geo/) and saved locally.
 
 ```{r}
 # Load CSV's for gene counts & metadata. Retain untidy names for ease
@@ -106,7 +106,7 @@ keep <- rowSums(counts(dds)) >= 10
 
 dds <- dds[keep, ]
 
-# set factor level (reference group)
+# set factor level (reference group) : Im interested in comparing copd and smokers to the reference group non-smokers in this case. 
 dds$patient_group <- relevel(dds$patient_group, ref = "non_smoker")
 
 # Run DEG analysis
@@ -116,57 +116,59 @@ dds <- DESeq(dds)
 
 ### View results of DEG analysis
 ```{r}
-# lists the coefficients
+# lists the contracts
 resultsNames(dds)
 
-res <- results(dds)
-
-res
-
-summary(res)
-
-sum(res$padj < 0.1, na.rm = TRUE)
-
-# Specify a different FDR cutoff (p-adj); default is 0.1
+# Specifying a strict FDR (p-adj) cutoff for posterity. (default is 0.1)
 res05 <- results(dds, alpha = 0.05)
 
+# Default contrast will be "smoker" vs reference group "non_smoker"
 res05
 
 summary(res05)
 
+# Count of DEG's
 sum(res05$padj < 0.05, na.rm = TRUE)
 
-# Compare DEG's across patient groups
+```
 
-# Non-Smoker vs Non-Smoker
-resSmoker <- results(dds, contrast = c("patient_group", "smoker", "non_smoker"))
 
-resSmoker
 
-summary(resSmoker)
-
-sum(resSmoker$padj < 0.1, na.rm = TRUE)
+# Checking alternate contracts
+```{r}
+# Next im curious about seeing the remaining group comparisons 
 
 # COPD vs Non-Smoker
-resCOPD <- results(dds, contrast = c("patient_group", "copd", "non_smoker"))
+resCOPD <- results(dds, alpha = 0.05, contrast = c("patient_group", "copd", "non_smoker"))
 
 resCOPD
 
 summary(resCOPD)
 
-sum(resCOPD$padj < 0.1, na.rm = TRUE)
+sum(resCOPD$padj < 0.05, na.rm = TRUE)
 
 # COPD vs Smoker
-resWild <- results(dds, contrast = c("patient_group", "copd", "smoker"))
+resWild <- results(dds, alpha = 0.05, contrast = c("patient_group", "copd", "smoker"))
 
 resWild
 
 summary(resWild)
 
-sum(resWild$padj < 0.1, na.rm = TRUE)
+sum(resWild$padj < 0.05, na.rm = TRUE)
 
-# For visualization and gene ranking, shrink log fold changes of a condition (shrink effect size)
 
+
+```
+
+
+There are $$`format(sum(res05$padj < 0.05, na.rm = TRUE))`$$ DEG's between Smoker & Non-Smoker groups;
+$$`format(sum(resCOPD$padj < 0.05, na.rm = TRUE))`$$ between COPD & Non-Smoker groups;
+and $$`format(sum(resWild$padj < 0.05, na.rm = TRUE))`$$ between COPD & Smoker groups. 
+
+
+### Log fold Skrinking and a chosen contract
+Aids in visualization and gene ranking
+```{r}
 # Adaptive t prior shrinkage estimator
 resLFC <- lfcShrink(dds,
   coef = "patient_group_smoker_vs_non_smoker",
@@ -186,13 +188,14 @@ resAsh <- lfcShrink(dds,
   type = "ashr"
 )
 
-# Plot log fold shrunked DEG's
+# Plot log fold shrunken DEG's
 
 p1 <- plotMA(resLFC, main="apeglm", returnData=TRUE)
 
 p1_plot <- ggplot(p1, aes(x=mean, y=lfc, color=isDE)) + 
   geom_point() +
   scale_x_continuous(trans='log10') +
+  ylim(-2, 2) +
   labs(title = "apeglm")
 
 p2 <- plotMA(resNorm, main="normal", returnData=TRUE)
@@ -200,6 +203,7 @@ p2 <- plotMA(resNorm, main="normal", returnData=TRUE)
 p2_plot <- ggplot(p2, aes(x=mean, y=lfc, color=isDE)) + 
   geom_point() +
   scale_x_continuous(trans='log10') +
+  ylim(-2, 2) +
   labs(title = "normal")
 
 p3 <- plotMA(resAsh, main="ashr", returnData=TRUE)
@@ -207,9 +211,10 @@ p3 <- plotMA(resAsh, main="ashr", returnData=TRUE)
 p3_plot <- ggplot(p3, aes(x=mean, y=lfc, color=isDE)) + 
   geom_point() +
   scale_x_continuous(trans='log10') +
+  ylim(-2, 2) +
   labs(title = "ashr")
 
-gridExtra::grid.arrange(p1_plot, p2_plot, p3_plot, nrow=1)
+gridExtra::grid.arrange(p1_plot, p2_plot, p3_plot, nrow=2)
 
 ```
 
@@ -220,18 +225,66 @@ MA plot visualizes relationships between log ratio & mean values of two variable
 
 ### Exploring results of DEG analysis
 ```{r}
+
+res <- results(dds)
 # Visualize log2 fold changes of a given variable over the mean of normalized counts for all samples
-plotMA(res, ylim = c(-2, 2), main = "res padj < 0.1")
+p01 <- plotMA(res, ylim = c(-2, 2), main = "res padj < 0.1", returnData=TRUE)
 
-plotMA(res05, ylim = c(-2, 2), main = "res padj < 0.05")
+p01_plot <- ggplot(p01, aes(x = mean, y = lfc, color = isDE)) +
+  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
+  scale_x_continuous(trans = 'log10') +
+  ylim(-2, 2) +
+  labs(title = "Default res (padj=0.1)")
 
-plotMA(resLFC, ylim = c(-2, 2), main = "res Shruken effect size")
+p005 <- plotMA(res05, ylim = c(-2, 2), main = "res padj < 0.05", returnData=TRUE)
 
-plotMA(resSmoker, ylim = c(-2, 2), main = "Smoker vs Non Smoker")
+p005_plot <- ggplot(p005, aes(x = mean, y = lfc, color = isDE)) +
+  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
+  scale_x_continuous(trans = 'log10') +
+  ylim(-2, 2) +
+  labs(title = "Strict res (padj=0.05)")
 
-plotMA(resCOPD, ylim = c(-2, 2), main = "COPD vs Non Smoker")
+pLFC <- plotMA(resLFC, ylim = c(-2, 2), main = "res Shruken effect size", returnData=TRUE)
 
-plotMA(resWild, ylim = c(-2, 2), main = "COPD vs Smoker")
+pLFC_plot <- ggplot(pLFC, aes(x = mean, y = lfc, color = isDE)) +
+  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
+  scale_x_continuous(trans = 'log10') +
+  ylim(-2, 2) +
+  labs(title = "Log fold shrunk (padj=0.1)")
+
+gridExtra::grid.arrange(p01_plot, p005_plot, pLFC_plot, nrow=2)
+
+```
+
+
+# Log shrunken plots
+```{r}
+
+pDef <- plotMA(res, ylim = c(-2, 2), main = "COPD vs Non Smoker", returnData=TRUE)
+
+pDef_plot <- ggplot(pDef, aes(x = mean, y = lfc, color = isDE)) +
+  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
+  scale_x_continuous(trans = 'log10') +
+  ylim(-2, 2) +
+  labs(title = "Smoker vs Non_Smoker DEG's")
+
+pCOPD <- plotMA(resCOPD, ylim = c(-2, 2), main = "COPD vs Non_Smoker", returnData=TRUE)
+
+pCOPD_plot <- ggplot(pCOPD, aes(x = mean, y = lfc, color = isDE)) +
+  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
+  scale_x_continuous(trans = 'log10') +
+  ylim(-2, 2) +
+  labs(title = "COPD v Non Smoker DEG's")
+
+pWild <- plotMA(resWild, ylim = c(-2, 2), main = "COPD vs Smoker", returnData=TRUE)
+
+pWild_plot <- ggplot(pWild, aes(x = mean, y = lfc, color = isDE)) +
+  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
+  scale_x_continuous(trans = 'log10') +
+  ylim(-2, 2) +
+  labs(title = "COPD v Smoker DEG's")
+
+gridExtra::grid.arrange(pDef_plot, pCOPD_plot, pWild_plot, nrow=2)
 
 # # to interactively select genes from MA plot (run outside of Rmarkdown chunk; in console)
 # plotMA(resLFC, ylim=c(-2,2), main = "res Shruken effect size")
