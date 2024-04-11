@@ -2,13 +2,19 @@
 title: "GSE183973 DESeq2"
 author: "Mikias HW"
 date: "2024-03-15"
-output: html_document
+output: 
+  prettydoc::html_pretty:
+    theme: hpstr
+    toc: yes
 ---
-#***GSE183973*** analysis
-## Bulk Seq :Characterization of two lung alveolar macrophages in bronchoalveolar lavage fluid (BALF) cells in non-smoker healthy, smoker and COPD patients
+***Work in progress*** 
+(https://github.com/MikiasHWT/Bulk-RNA-Seq)
 
-### Load libraries
+Bulk Seq :Characterization of two lung alveolar macrophages in bronchoalveolar lavage fluid (BALF) cells in non-smoker healthy, smoker and COPD patients
+
+Load libraries
 ```{r results='hide', message=FALSE, warning=FALSE}
+library(prettydoc)
 # library(GEOquery) # import datasets from GEO (unused)
 library(tidyverse) # data wrangling & visualization
 library(DESeq2) # Diverential gene expression analysis
@@ -25,9 +31,10 @@ library(gridExtra) # GGplot extention
 ```
 
 
+# Preperation 
 ***Note:*** Using GEOquery will require some troubleshooting as the GSE submission for this dataset lacked feature information. Instead the CSV files for gene counts and metadata can be download directly from [GEO](https://www.ncbi.nlm.nih.gov/geo/) and saved locally.
 
-# Load data
+## Load data
 ```{r}
 # Load CSV's for gene counts & metadata. Retain untidy names for ease
 counts <- read.csv("Data/GSE183973_bulkRNA_gene_counts.csv",
@@ -56,7 +63,7 @@ head(metadata)
 ```
 
 
-# Match samples
+## Match samples
 ```{r}
 # Remove genes column (gene names retained as index)
 # Assign to new df to retain genes column for later data exploration
@@ -75,7 +82,7 @@ all(colnames(geneCounts) == metadata$samples)
 ```
 
 
-# Construct DESeqDataSet object
+## Construct DESeqDataSet object
 ```{r}
 # Define design matrix for DESeq2
 dds <- DESeqDataSetFromMatrix(
@@ -105,7 +112,9 @@ resultsNames(dds)
 ```
 
 
-# View results of DEG analysis
+# Results
+
+## View results of default DEG analysis
 ```{r}
 # defaul results with padj = 0.1
 res <- results(dds)
@@ -125,7 +134,7 @@ sum(res05$padj < 0.05, na.rm = TRUE)
 ```
 
 
-# Viewing DEG's alternate contracts
+## Viewing DEG's alternate contracts
 ```{r}
 # Next im curious about seeing the remaining group comparisons
 
@@ -149,7 +158,7 @@ sum(resWild$padj < 0.05, na.rm = TRUE)
 ```
 
 
-# Log fold Skrinking a chosen contrast (default contrast in this case)
+## Log fold Skrink DEG's
 Aids in visualization and gene ranking
 ```{r}
 # Adaptive t prior shrinkage estimator
@@ -172,12 +181,42 @@ resAsh <- lfcShrink(dds,
 ```
 
 
+## Subset results
+```{r}
+# Extract differentially expressed genes
+subRes05 <- subset(res, padj < 0.05)
+
+subRes01 <- subset(res, padj < 0.01)
+
+subRes005 <- subset(res, padj < 0.005)
+
+DEG05 <- subRes05@rownames
+
+DEG01 <- subRes01@rownames
+
+DEG005 <- subRes005@rownames
+
+```
+
+
+### Plot subset results
+```{r}
+# counts |>
+#   filter(genes %in% DEG) |>
+#   ggplot(aes(x = samples, y = genes, fill = counts)) +
+#   geom_tile() +
+#   scale_fill_gradient(low = "white", high = "red") +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
 ***MA plot*** visualizes relationships between log ratio & mean values of two variables:
 	• 	“M” = minus in the log scale. Log ratios on (y) axis.
 	• 	“A” = average in the log scale. The mean values on (x) axis. 
 
+# Visualize
 
-# Define function to visualize MA plots
+## Define function to visualize MA plots
 ```{r}
 plotMA_arrange_iterative <- function(res_list) {
   plots <- list()
@@ -200,19 +239,7 @@ plotMA_arrange_iterative <- function(res_list) {
 ```
 
 
-# Visualize Log Fold Shrunken MA Plots
-```{r}
-# Plot log fold shrunken DEG's
-res_list <- list(
-  "apeglm" = resLFC,
-  "normal" = resNorm,
-  "ashr" = resAsh
-)
-
-plotMA_arrange_iterative(res_list)
-```
-
-# Visualize DEG results
+### Visualize DEG results
 ```{r}
 # Visualize log2 fold changes of a given variable over the mean of normalized counts for all samples
 
@@ -226,7 +253,7 @@ plotMA_arrange_iterative(res_list)
 ```
 
 
-# Visualizing alternate contrasts
+### Visualizing alternate contrasts
 ```{r}
 res_list <- list(
   "Smoker vs Non_Smoker DEG's" = res,
@@ -237,9 +264,37 @@ res_list <- list(
 plotMA_arrange_iterative(res_list)
 ```
 
+
+### Visualize Log Fold Shrunken MA Plots
+```{r}
+# Plot log fold shrunken DEG's
+res_list <- list(
+  "apeglm" = resLFC,
+  "normal" = resNorm,
+  "ashr" = resAsh
+)
+
+plotMA_arrange_iterative(res_list)
+```
+
+### visualize subset results
+```{r}
+# Plot log fold shrunken DEG's
+res_list <- list(
+  "Subset 0.05" = subRes05,
+  "Subset 0.01" = subRes01,
+  "Subset 0.005" = subRes005
+)
+
+plotMA_arrange_iterative(res_list)
+
+```
+
 **Note**: If there is unwanted variation present in the data (e.g. batch effects) it is always recommend to correct for this, which can be accommodated in DESeq2 by including in the design any known batch variables or by using functions/packages such as svaseq in sva (Leek 2014) or the RUV functions in RUVSeq (Risso et al. 2014) to estimate variables that capture the unwanted variation. In addition, the ashr developers have a specific method for accounting for unwanted variation in combination with ashr (Gerard and Stephens 2017).
 
-# Compare transformations and impact on data variance 
+# Transform
+
+## Compare transformations and impact on data variance 
 ```{r}
 # Variance stabilizing transformation. (log2 scaling for large counts)
 vsd <- vst(dds, blind = FALSE)
@@ -256,8 +311,9 @@ meanSdPlot(assay(vsd))
 meanSdPlot(assay(rld))
 ```
 
+# Quality Assesment
 
-# Quality assesment with Heatmaps
+## Quality assesment with Heatmaps
 ```{r}
 select <- order(rowMeans(counts(dds, normalized = TRUE)),
   decreasing = TRUE
@@ -281,9 +337,9 @@ pheatmap(assay(rld)[select, ],
 )
 ```
 
-
+## Sample distance
 ```{r}
-#
+# Determine between group variety  
 sampleDists <- dist(t(assay(vsd)))
 
 sampleDistMatrix <- as.matrix(sampleDists)
@@ -301,8 +357,7 @@ pheatmap(sampleDistMatrix,
 )
 ```
 
-
-# PCA plots
+## PCA plots
 ```{r}
 plotPCA(vsd, intgroup = c("cell_type", "patient_group"))
 
@@ -324,7 +379,7 @@ ggplot(pcaData, aes(PC1, PC2, color = patient_group, shape = cell_type)) +
 ```
 
 
-# Plot Counts
+## Plot Counts
 ```{r}
 # Plot the gene with the smallest p adj value across specified groupings
 c1 <- plotCounts(dds, gene = which.min(res$padj), intgroup = c("cell_type"), returnData = TRUE)
@@ -346,10 +401,28 @@ c3_plot <- ggplot(c3, aes(x = patient_group, y = count, color = cell_type)) +
   scale_y_log10(breaks = c(25, 100, 400))
 
 gridExtra::grid.arrange(c1_plot, c2_plot, c3_plot, nrow = 2)
+
+# plot chosen genes per chosen conditions
+plotCounts(dds, gene = which.min(res$padj), intgroup = "patient_group")
+
+plotCounts(dds, gene = which.min(res$padj), intgroup = c("patient_group", "cell_type"))
+
+plotCounts(dds, gene = "CD101", intgroup = "patient_group")
+
+p <- plotCounts(dds,
+  gene = which.min(res$padj),
+  intgroup = c("patient_group", "cell_type"),
+  returnData = TRUE
+)
+
+ggplot(p, aes(x = patient_group, y = count, color = cell_type)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0), size = 3) +
+  scale_y_log10(breaks = c(25, 100, 400))
 ```
 
+# Exploratory Data Analysis
 
-# Merge counts & Metadata for Data exploration
+## Merge counts & Metadata for Data exploration
 ```{r}
 # Pivot DF for exploratory data analysis
 countsLong <- counts |>
@@ -365,8 +438,8 @@ head(counts)
 ```
 
 
-# Exploratory data analysis (with randomly selected genes, for now)
-```{r eval=FALSE}
+## Random EDA
+```{r}
 # barplot
 counts |>
   filter(genes == "CD101") |>
@@ -412,11 +485,8 @@ counts |>
 ```
 
 
-### Plot DE genes results
+## Volcano Plot
 ```{r}
-plotMA(res)
-
-
 EnhancedVolcano(res,
   lab = rownames(res),
   x = "log2FoldChange",
@@ -428,25 +498,6 @@ EnhancedVolcano(res,
   labSize = 6.0,
   colAlpha = 0.3
 )
-
-
-
-# plot chosen genes per chosen conditions
-plotCounts(dds, gene = which.min(res$padj), intgroup = "patient_group")
-
-plotCounts(dds, gene = which.min(res$padj), intgroup = c("patient_group", "cell_type"))
-
-plotCounts(dds, gene = "CD101", intgroup = "patient_group")
-
-p <- plotCounts(dds,
-  gene = which.min(res$padj),
-  intgroup = c("patient_group", "cell_type"),
-  returnData = TRUE
-)
-
-ggplot(p, aes(x = patient_group, y = count, color = cell_type)) +
-  geom_point(position = position_jitter(w = 0.1, h = 0), size = 3) +
-  scale_y_log10(breaks = c(25, 100, 400))
 ```
 
 
@@ -489,25 +540,10 @@ resOrdered05
 # write.csv(as.data.frame(resOrdered05), file="Smoker_NonSmoker_results_padj05.csv")
 ```
 
-### Enrichment/Over-representation analysis (Incomplete)
+# Next Analysis: Enrichment/Over-representation analysis 
 https://yulab-smu.top/biomedical-knowledge-mining-book/index.html
 
-Gene Ontology requires list of genes counts
-Gene set enrichment requires normalized counts
-
-Packages to test:
-clusterProfiler
-ChIPseeker
-DOSE
-enrichplot
-GOSemSim
-meshes
-ReactomePA
-
-
-
-
-### Session Info
+Session Info
 ```{r}
 sessionInfo()
 ```
