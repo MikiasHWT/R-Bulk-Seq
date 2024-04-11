@@ -7,7 +7,7 @@ output: html_document
 #***GSE183973*** analysis
 ## Bulk Seq :Characterization of two lung alveolar macrophages in bronchoalveolar lavage fluid (BALF) cells in non-smoker healthy, smoker and COPD patients
 
-#### Load libraries
+### Load libraries
 ```{r results='hide', message=FALSE, warning=FALSE}
 # library(GEOquery) # import datasets from GEO (unused)
 library(tidyverse) # data wrangling & visualization
@@ -17,31 +17,17 @@ library(apeglm) # log fold shrinking (adaptive t prior shrinkage estimator)
 library(ashr) # log fold shrinking (adaptive shrinkage estimator)
 library(pheatmap) # heatmaps
 library(RColorBrewer) # Color themes
-library(Glimma) # Interactive DEG visualization
 library(EnhancedVolcano) # Pleasing volcano plots
+library(gridExtra) # GGplot extention
 # library(GO.db) # Gene ontology
 # library(GOstats) # Gene ontology
 # library(clusterProfiler) # over representation/gene enrichment
 ```
 
-# Relevant resources
-
-https://bioconductor.org/packages/release/bioc/html/ReportingTools.html
-
-https://bioconductor.org/packages/release/bioc/html/regionReport.html
-
-https://bioconductor.org/packages/release/bioc/html/Glimma.html
-
-https://bioconductor.org/packages/release/bioc/html/pcaExplorer.html
-
-https://gist.github.com/federicomarini/4a543eebc7e7091d9169111f76d59de1
-
-https://github.com/price0416/DEvis
-
-### Load/Clean counts table & Metadata
 
 ***Note:*** Using GEOquery will require some troubleshooting as the GSE submission for this dataset lacked feature information. Instead the CSV files for gene counts and metadata can be download directly from [GEO](https://www.ncbi.nlm.nih.gov/geo/) and saved locally.
 
+# Load data
 ```{r}
 # Load CSV's for gene counts & metadata. Retain untidy names for ease
 counts <- read.csv("Data/GSE183973_bulkRNA_gene_counts.csv",
@@ -52,26 +38,25 @@ metadata <- read.csv("Data/GSE183973_metadata_samples.csv",
   check.names = FALSE
 )
 
+# Set conditions variables as factors
 metadata$patient_group <- factor(metadata$patient_group)
+
 metadata$cell_type <- factor(metadata$cell_type)
 
 # Define missing column names
 colnames(counts)[1] <- "genes"
 
-head(colnames(counts))
+row.names(counts) <- counts$genes
+
+head(counts)
 
 colnames(metadata)[1] <- "samples"
 
 head(metadata)
-
-# Set column index
-row.names(counts) <- counts$genes
-
-head(row.names(counts))
 ```
 
 
-### Match sample order in counts and metadata df's
+# Match samples
 ```{r}
 # Remove genes column (gene names retained as index)
 # Assign to new df to retain genes column for later data exploration
@@ -90,7 +75,7 @@ all(colnames(geneCounts) == metadata$samples)
 ```
 
 
-### Construct DESeqDataSet object
+# Construct DESeqDataSet object
 ```{r}
 # Define design matrix for DESeq2
 dds <- DESeqDataSetFromMatrix(
@@ -99,25 +84,31 @@ dds <- DESeqDataSetFromMatrix(
   design = ~ cell_type + patient_group
 )
 
-dds
+# normalization by estimating size factor
+dds <- estimateSizeFactors(dds)
 
 # remove low expressed genes
 keep <- rowSums(counts(dds)) >= 10
 
 dds <- dds[keep, ]
 
-# set factor level (reference group) : Im interested in comparing copd and smokers to the reference group non-smokers in this case. 
+# set factor level (reference group) : Im interested in comparing copd and smokers to the reference group non-smokers in this case.
 dds$patient_group <- relevel(dds$patient_group, ref = "non_smoker")
 
 # Run DEG analysis
 dds <- DESeq(dds)
+
+dds
+
+# lists the contracts
+resultsNames(dds)
 ```
 
 
-### View results of DEG analysis
+# View results of DEG analysis
 ```{r}
-# lists the contracts
-resultsNames(dds)
+# defaul results with padj = 0.1
+res <- results(dds)
 
 # Specifying a strict FDR (p-adj) cutoff for posterity. (default is 0.1)
 res05 <- results(dds, alpha = 0.05)
@@ -128,15 +119,15 @@ res05
 summary(res05)
 
 # Count of DEG's
-sum(res05$padj < 0.05, na.rm = TRUE)
+sum(res$padj < 0.1, na.rm = TRUE)
 
+sum(res05$padj < 0.05, na.rm = TRUE)
 ```
 
 
-
-# Checking alternate contracts
+# Viewing DEG's alternate contracts
 ```{r}
-# Next im curious about seeing the remaining group comparisons 
+# Next im curious about seeing the remaining group comparisons
 
 # COPD vs Non-Smoker
 resCOPD <- results(dds, alpha = 0.05, contrast = c("patient_group", "copd", "non_smoker"))
@@ -155,18 +146,10 @@ resWild
 summary(resWild)
 
 sum(resWild$padj < 0.05, na.rm = TRUE)
-
-
-
 ```
 
 
-There are $$`format(sum(res05$padj < 0.05, na.rm = TRUE))`$$ DEG's between Smoker & Non-Smoker groups;
-$$`format(sum(resCOPD$padj < 0.05, na.rm = TRUE))`$$ between COPD & Non-Smoker groups;
-and $$`format(sum(resWild$padj < 0.05, na.rm = TRUE))`$$ between COPD & Smoker groups. 
-
-
-### Log fold Skrinking and a chosen contract
+# Log fold Skrinking a chosen contrast (default contrast in this case)
 Aids in visualization and gene ranking
 ```{r}
 # Adaptive t prior shrinkage estimator
@@ -181,193 +164,82 @@ resNorm <- lfcShrink(dds,
   type = "normal"
 )
 
-
 # Adaptive shrinkage estimator. Fits a mixture of Normal distributions to form the prior
 resAsh <- lfcShrink(dds,
   coef = "patient_group_smoker_vs_non_smoker",
   type = "ashr"
 )
-
-# Plot log fold shrunken DEG's
-
-p1 <- plotMA(resLFC, main="apeglm", returnData=TRUE)
-
-p1_plot <- ggplot(p1, aes(x=mean, y=lfc, color=isDE)) + 
-  geom_point() +
-  scale_x_continuous(trans='log10') +
-  ylim(-2, 2) +
-  labs(title = "apeglm")
-
-p2 <- plotMA(resNorm, main="normal", returnData=TRUE)
-
-p2_plot <- ggplot(p2, aes(x=mean, y=lfc, color=isDE)) + 
-  geom_point() +
-  scale_x_continuous(trans='log10') +
-  ylim(-2, 2) +
-  labs(title = "normal")
-
-p3 <- plotMA(resAsh, main="ashr", returnData=TRUE)
-
-p3_plot <- ggplot(p3, aes(x=mean, y=lfc, color=isDE)) + 
-  geom_point() +
-  scale_x_continuous(trans='log10') +
-  ylim(-2, 2) +
-  labs(title = "ashr")
-
-gridExtra::grid.arrange(p1_plot, p2_plot, p3_plot, nrow=2)
-
 ```
 
 
-MA plot visualizes relationships between log ratio & mean values of two variables:
+***MA plot*** visualizes relationships between log ratio & mean values of two variables:
 	• 	“M” = minus in the log scale. Log ratios on (y) axis.
 	• 	“A” = average in the log scale. The mean values on (x) axis. 
 
-### Exploring results of DEG analysis
+
+# Define function to visualize MA plots
 ```{r}
+plotMA_arrange_iterative <- function(res_list) {
+  plots <- list()
 
-res <- results(dds)
-# Visualize log2 fold changes of a given variable over the mean of normalized counts for all samples
-p01 <- plotMA(res, ylim = c(-2, 2), main = "res padj < 0.1", returnData=TRUE)
+  for (i in seq_along(res_list)) {
+    res <- res_list[[i]]
+    res_name <- names(res_list)[i] # Get the name of the res object
+    p <- plotMA(res, returnData = TRUE) # DESeq2's PlotMA function
+    p_plot <- ggplot(p, aes(x = mean, y = lfc, color = isDE)) +
+      geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) + # Reduce non DEG genes transperancy
+      scale_x_continuous(trans = "log10") + # Scale mean counts
+      ylim(-2, 2) +
+      labs(title = res_name) # Use the name in the plot title
 
-p01_plot <- ggplot(p01, aes(x = mean, y = lfc, color = isDE)) +
-  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
-  scale_x_continuous(trans = 'log10') +
-  ylim(-2, 2) +
-  labs(title = "Default res (padj=0.1)")
+    plots[[i]] <- p_plot
+  }
 
-p005 <- plotMA(res05, ylim = c(-2, 2), main = "res padj < 0.05", returnData=TRUE)
-
-p005_plot <- ggplot(p005, aes(x = mean, y = lfc, color = isDE)) +
-  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
-  scale_x_continuous(trans = 'log10') +
-  ylim(-2, 2) +
-  labs(title = "Strict res (padj=0.05)")
-
-pLFC <- plotMA(resLFC, ylim = c(-2, 2), main = "res Shruken effect size", returnData=TRUE)
-
-pLFC_plot <- ggplot(pLFC, aes(x = mean, y = lfc, color = isDE)) +
-  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
-  scale_x_continuous(trans = 'log10') +
-  ylim(-2, 2) +
-  labs(title = "Log fold shrunk (padj=0.1)")
-
-gridExtra::grid.arrange(p01_plot, p005_plot, pLFC_plot, nrow=2)
-
+  do.call(grid.arrange, c(plots, nrow = 2))
+}
 ```
 
 
-# Log shrunken plots
+# Visualize Log Fold Shrunken MA Plots
 ```{r}
+# Plot log fold shrunken DEG's
+res_list <- list(
+  "apeglm" = resLFC,
+  "normal" = resNorm,
+  "ashr" = resAsh
+)
 
-pDef <- plotMA(res, ylim = c(-2, 2), main = "COPD vs Non Smoker", returnData=TRUE)
+plotMA_arrange_iterative(res_list)
+```
 
-pDef_plot <- ggplot(pDef, aes(x = mean, y = lfc, color = isDE)) +
-  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
-  scale_x_continuous(trans = 'log10') +
-  ylim(-2, 2) +
-  labs(title = "Smoker vs Non_Smoker DEG's")
+# Visualize DEG results
+```{r}
+# Visualize log2 fold changes of a given variable over the mean of normalized counts for all samples
 
-pCOPD <- plotMA(resCOPD, ylim = c(-2, 2), main = "COPD vs Non_Smoker", returnData=TRUE)
+res_list <- list(
+  "padj=0.1" = res,
+  "padj=0.05" = res05,
+  "Log fold shrunk padj=0.1" = resLFC
+)
 
-pCOPD_plot <- ggplot(pCOPD, aes(x = mean, y = lfc, color = isDE)) +
-  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
-  scale_x_continuous(trans = 'log10') +
-  ylim(-2, 2) +
-  labs(title = "COPD v Non Smoker DEG's")
+plotMA_arrange_iterative(res_list)
+```
 
-pWild <- plotMA(resWild, ylim = c(-2, 2), main = "COPD vs Smoker", returnData=TRUE)
 
-pWild_plot <- ggplot(pWild, aes(x = mean, y = lfc, color = isDE)) +
-  geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) +
-  scale_x_continuous(trans = 'log10') +
-  ylim(-2, 2) +
-  labs(title = "COPD v Smoker DEG's")
+# Visualizing alternate contrasts
+```{r}
+res_list <- list(
+  "Smoker vs Non_Smoker DEG's" = res,
+  "COPD v Non Smoker DEG's" = resCOPD,
+  "COPD v Smoker DEG's" = resWild
+)
 
-gridExtra::grid.arrange(pDef_plot, pCOPD_plot, pWild_plot, nrow=2)
-
-# # to interactively select genes from MA plot (run outside of Rmarkdown chunk; in console)
-# plotMA(resLFC, ylim=c(-2,2), main = "res Shruken effect size")
-#
-# idx <- identify(res$baseMean, res$log2FoldChange)
-#
-# rownames(res)[idx]
+plotMA_arrange_iterative(res_list)
 ```
 
 **Note**: If there is unwanted variation present in the data (e.g. batch effects) it is always recommend to correct for this, which can be accommodated in DESeq2 by including in the design any known batch variables or by using functions/packages such as svaseq in sva (Leek 2014) or the RUV functions in RUVSeq (Risso et al. 2014) to estimate variables that capture the unwanted variation. In addition, the ashr developers have a specific method for accounting for unwanted variation in combination with ashr (Gerard and Stephens 2017).
 
-
-### Plot Counts
-```{r}
-# Plot the gene with the smallest p value across specified groupings
-c1 <- plotCounts(dds, gene=which.min(res$padj), intgroup=c("cell_type"), returnData=TRUE)
-
-c1_plot <- ggplot(c1, aes(x=cell_type, y=count)) + 
-  geom_point(position=position_jitter(w=0.1,h=0)) + 
-  scale_y_log10(breaks=c(25,100,400))
-
-c2 <- plotCounts(dds, gene=which.min(res$padj), intgroup=c("patient_group"), returnData=TRUE)
-
-c2_plot <- ggplot(c2, aes(x=patient_group, y=count)) + 
-  geom_point(position=position_jitter(w=0.1,h=0)) + 
-  scale_y_log10(breaks=c(25,100,400))
-
-c3 <- plotCounts(dds, gene=which.min(res$padj), intgroup=c("cell_type", "patient_group"), returnData=TRUE)
-
-c3_plot <- ggplot(c3, aes(x=patient_group, y=count, color=cell_type)) + 
-  geom_point(position=position_jitter(w=0.1,h=0)) + 
-  scale_y_log10(breaks=c(25,100,400))
-
-gridExtra::grid.arrange(c1_plot, c2_plot, c3_plot, nrow=1)
-
-
-
-```
-
-**Note**: For a particular gene, a log2 fold change of -1 for condition treated vs untreated means that the treatment induces a multiplicative change in observed gene expression level of 2−1=0.5
- compared to the untreated condition. If the variable of interest is continuous-valued, then the reported log2 fold change is per unit of change of that variable.
- 
-**Note** on p-values set to NA: some values in the results table can be set to NA for one of the following reasons:
-
--If within a row, all samples have zero counts, the baseMean column will be zero, and the log2 fold change estimates, p value and adjusted p value will all be set to NA.
-
--If a row contains a sample with an extreme count outlier then the p value and adjusted p value will be set to NA. These outlier counts are detected by Cook’s distance. Can be customized.
-
--If a row is filtered by automatic independent filtering, for having a low mean normalized count, then only the adjusted p value will be set to NA. Description and customization is possible. 
-
-
-**ReportingTools** An HTML report of the results with plots and sortable/filterable columns can be generated using the ReportingTools package on a DESeqDataSet that has been processed by the DESeq function.
-
-**regionReport** An HTML and PDF summary of the results with plots can also be generated using the regionReport package.
-
-**Glimma** Interactive visualization of DESeq2 output, including MA-plots (also called MD-plot) can be generated using the Glimma package.
-
-**pcaExplorer** Interactive visualization of DESeq2 output, including PCA plots, boxplots of counts and other useful summaries can be generated using the pcaExplorer package
-
-**iSEE** Provides functions for creating an interactive Shiny-based graphical user interface for exploring data stored in SummarizedExperiment objects
-
-https://gist.github.com/federicomarini/4a543eebc7e7091d9169111f76d59de1
-
-**DEvis** is a powerful, integrated solution for the analysis of differential expression data. 
-
-### Exporting results
-```{r}
-# order results by pvalue
-resOrdered <- res[order(res$pvalue), ]
-
-resOrdered
-
-summary(resOrdered)
-
-resOrdered05 <- subset(resOrdered, padj < 0.05)
-resOrdered05
-
-# write.csv(as.data.frame(resOrdered05), file="Smoker_NonSmoker_results_padj05.csv")
-
-
-```
-
-### Compare various transformations and their impact on data variance 
+# Compare transformations and impact on data variance 
 ```{r}
 # Variance stabilizing transformation. (log2 scaling for large counts)
 vsd <- vst(dds, blind = FALSE)
@@ -385,7 +257,7 @@ meanSdPlot(assay(rld))
 ```
 
 
-### Quality assesment with Heatmaps
+# Quality assesment with Heatmaps
 ```{r}
 select <- order(rowMeans(counts(dds, normalized = TRUE)),
   decreasing = TRUE
@@ -407,8 +279,10 @@ pheatmap(assay(rld)[select, ],
   cluster_rows = FALSE, show_rownames = FALSE,
   cluster_cols = FALSE, annotation_col = df
 )
+```
 
 
+```{r}
 #
 sampleDists <- dist(t(assay(vsd)))
 
@@ -428,7 +302,7 @@ pheatmap(sampleDistMatrix,
 ```
 
 
-### PCA plots
+# PCA plots
 ```{r}
 plotPCA(vsd, intgroup = c("cell_type", "patient_group"))
 
@@ -450,8 +324,32 @@ ggplot(pcaData, aes(PC1, PC2, color = patient_group, shape = cell_type)) +
 ```
 
 
+# Plot Counts
+```{r}
+# Plot the gene with the smallest p adj value across specified groupings
+c1 <- plotCounts(dds, gene = which.min(res$padj), intgroup = c("cell_type"), returnData = TRUE)
 
-### Merge counts & Metadata
+c1_plot <- ggplot(c1, aes(x = cell_type, y = count)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0)) +
+  scale_y_log10(breaks = c(25, 100, 400))
+
+c2 <- plotCounts(dds, gene = which.min(res$padj), intgroup = c("patient_group"), returnData = TRUE)
+
+c2_plot <- ggplot(c2, aes(x = patient_group, y = count)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0)) +
+  scale_y_log10(breaks = c(25, 100, 400))
+
+c3 <- plotCounts(dds, gene = which.min(res$padj), intgroup = c("cell_type", "patient_group"), returnData = TRUE)
+
+c3_plot <- ggplot(c3, aes(x = patient_group, y = count, color = cell_type)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0)) +
+  scale_y_log10(breaks = c(25, 100, 400))
+
+gridExtra::grid.arrange(c1_plot, c2_plot, c3_plot, nrow = 2)
+```
+
+
+# Merge counts & Metadata for Data exploration
 ```{r}
 # Pivot DF for exploratory data analysis
 countsLong <- counts |>
@@ -467,7 +365,7 @@ head(counts)
 ```
 
 
-### Exploratory data analysis (with randomly selected genes, for now)
+# Exploratory data analysis (with randomly selected genes, for now)
 ```{r eval=FALSE}
 # barplot
 counts |>
@@ -514,22 +412,6 @@ counts |>
 ```
 
 
-
-### Interactive Plots
-```{r eval=FALSE}
-# Computationally expensive Knit
-glimmaMDS(dds)
-
-dds <- DESeq(dds, quiet = TRUE)
-
-glimmaMA(dds, groups = metadata$patient_group)
-
-# creates ma-plot.html in working directory
-# link to it in Rmarkdown using [MA-plot](ma-plot.html)
-#     htmlwidgets::saveWidget(glimmaMA(dds), "ma-plot.html")
-```
-
-
 ### Plot DE genes results
 ```{r}
 plotMA(res)
@@ -570,12 +452,8 @@ ggplot(p, aes(x = patient_group, y = count, color = cell_type)) +
 
 ### Subset results
 ```{r}
-# resSmall <- results(dds, alpha = 0.01)
-
-# summary(resSmall)
-
 # Extract differentially expressed genes
-DE_genes <- subset(res, padj < 0.01)
+DE_genes <- subset(res, padj < 0.05)
 
 summary(DE_genes)
 
@@ -595,6 +473,21 @@ counts |>
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+
+# Exporting results
+```{r}
+# order results by pvalue
+resOrdered <- res[order(res$pvalue), ]
+
+resOrdered
+
+summary(resOrdered)
+
+resOrdered05 <- subset(resOrdered, padj < 0.05)
+resOrdered05
+
+# write.csv(as.data.frame(resOrdered05), file="Smoker_NonSmoker_results_padj05.csv")
+```
 
 ### Enrichment/Over-representation analysis (Incomplete)
 https://yulab-smu.top/biomedical-knowledge-mining-book/index.html
