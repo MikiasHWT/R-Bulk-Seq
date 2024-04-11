@@ -6,6 +6,7 @@ output:
   prettydoc::html_pretty:
     theme: hpstr
     toc: yes
+    df_print: paged
 ---
 ***Work in progress*** 
 (https://github.com/MikiasHWT/Bulk-RNA-Seq)
@@ -25,6 +26,7 @@ library(pheatmap) # heatmaps
 library(RColorBrewer) # Color themes
 library(EnhancedVolcano) # Pleasing volcano plots
 library(gridExtra) # GGplot extention
+library(DT) # nice data tables
 # library(GO.db) # Gene ontology
 # library(GOstats) # Gene ontology
 # library(clusterProfiler) # over representation/gene enrichment
@@ -123,7 +125,7 @@ res <- results(dds)
 res05 <- results(dds, alpha = 0.05)
 
 # Default contrast will be "smoker" vs reference group "non_smoker"
-res05
+datatable(head(as.data.frame(res05)))
 
 summary(res05)
 
@@ -131,6 +133,7 @@ summary(res05)
 sum(res$padj < 0.1, na.rm = TRUE)
 
 sum(res05$padj < 0.05, na.rm = TRUE)
+
 ```
 
 
@@ -141,7 +144,7 @@ sum(res05$padj < 0.05, na.rm = TRUE)
 # COPD vs Non-Smoker
 resCOPD <- results(dds, alpha = 0.05, contrast = c("patient_group", "copd", "non_smoker"))
 
-resCOPD
+datatable(head(as.data.frame(resCOPD)))
 
 summary(resCOPD)
 
@@ -150,7 +153,7 @@ sum(resCOPD$padj < 0.05, na.rm = TRUE)
 # COPD vs Smoker
 resWild <- results(dds, alpha = 0.05, contrast = c("patient_group", "copd", "smoker"))
 
-resWild
+datatable(head(as.data.frame(resWild)))
 
 summary(resWild)
 
@@ -190,11 +193,11 @@ subRes01 <- subset(res, padj < 0.01)
 
 subRes005 <- subset(res, padj < 0.005)
 
-DEG05 <- subRes05@rownames
-
-DEG01 <- subRes01@rownames
-
-DEG005 <- subRes005@rownames
+# DEG05 <- subRes05@rownames
+# 
+# DEG01 <- subRes01@rownames
+# 
+# DEG005 <- subRes005@rownames
 
 ```
 
