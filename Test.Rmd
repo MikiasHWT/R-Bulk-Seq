@@ -1,0 +1,76 @@
+---
+title: "GSE183973 DESeq2"
+author: "Mikias HW"
+date: "2024-03-15"
+output: 
+  prettydoc::html_pretty:
+    theme: hpstr
+    toc: yes  
+    number_sections: true
+    df_print: paged
+    css: doc.css
+    self_contained: yes
+    code_external: false
+    fig_width: 100
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(DT)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+
+```
+
+There are `r nrow(cars)` cars
+
+
+**Cell types:**
+
+Blood Monocytes (BM):  
+
+Alveolar Macrophages (AM):
+
+Interstitial Macrophages (IM): 
+
+
+Macrophages	Alveolar macrophages **(AM)** High autofluorescent!!	CD11b−, CD11c+, CD64+, CD206+, CD169+, MerTK+, Siglec-F+
+<br /><br />
+Interstitial macrophages **(IM)** Non-Autofluorescent!!	CD11b+, CD11clo/+, CD64+, CD206+, CD169+/−, CX3CR1+, MerTK+, CCR2+/−, (Siglec F-)
+<br /><br />
+Monocyte-derived cells	Monocyte-derived macrophages (acute lung injury)	CD11b+, CD64+, CX3CR1+, Ly6C+/−, CCR2+/−
+<br /><br />
+Monocytes	Classical monocytes (inflammatory)	CD11b+, CD115+, CCR2+, F4/80 +, CD43lo, CXCR1(int), CD62L+, Ly6C-hi
+<br />
+*Mono to Macro "waterfall"* : Ly6C(hi) MHCII(lo) mono recruited into tissue and converted to Ly6C(lo) MHCII (hi) Macrophages	
+<br /><br />
+Nonclassical monocytes (patrolling)	CD11b+, CD115+, F4/80 lo/+, CD43hi, CX3CR1hi, CXCR1(hi), CCR2-, CD62L-, Ly6C-lo
+
+
+
+```{r car}
+head(cars)
+
+datatable(cars)
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
