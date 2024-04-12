@@ -11,7 +11,7 @@ output:
 ***Work in progress*** 
 (https://github.com/MikiasHWT/Bulk-RNA-Seq)
 
-Bulk Seq :Characterization of two lung alveolar macrophages in bronchoalveolar lavage fluid (BALF) cells in non-smoker healthy, smoker and COPD patients
+Purpose : Comparison of RNA expression of three innate immune cell populations across three patient groups. 
 
 Load libraries
 ```{r results='hide', message=FALSE, warning=FALSE}
@@ -32,6 +32,34 @@ library(DT) # nice data tables
 # library(clusterProfiler) # over representation/gene enrichment
 ```
 
+Define functions
+```{r}
+# MA Plots 
+# Arranged into 2 rows
+# Color & translucency by DEG 
+# Plot titles fed in as arguments
+# Mean counts (x-axis) Log10 transformed
+
+plotMA_arrange_iterative <- function(res_list) {
+  plots <- list()
+
+  for (i in seq_along(res_list)) {
+    res <- res_list[[i]]
+    res_name <- names(res_list)[i] # Get the name of the res object
+    p <- plotMA(res, returnData = TRUE) # DESeq2's PlotMA function
+    p_plot <- ggplot(p, aes(x = mean, y = lfc, color = isDE)) +
+      geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) + # Reduce non DEG genes transperancy
+      scale_x_continuous(trans = "log10") + # Scale mean counts
+      ylim(-2, 2) +
+      labs(title = res_name) # Use the name in the plot title
+
+    plots[[i]] <- p_plot
+  }
+
+  do.call(grid.arrange, c(plots, nrow = 2))
+}
+```
+
 
 # Preperation 
 ***Note:*** Using GEOquery will require some troubleshooting as the GSE submission for this dataset lacked feature information. Instead the CSV files for gene counts and metadata can be download directly from [GEO](https://www.ncbi.nlm.nih.gov/geo/) and saved locally.
@@ -46,6 +74,19 @@ counts <- read.csv("Data/GSE183973_bulkRNA_gene_counts.csv",
 metadata <- read.csv("Data/GSE183973_metadata_samples.csv",
   check.names = FALSE
 )
+```
+
+Initially, Two sets of variables are considered for this analysis.  
+
+Cell types: `r format(unique(metadata$cell_type))`
+
+Patient Groups: `r format(unique(metadata$patient_group))`
+
+There are `r format(length(unique(metadata$patient_initials)))` patients evenly spread across the `r format(length(unique(metadata$patient_group)))` groups. Each patient contributing Blood Monocytes (`r unique(metadata$cell_type[1])`), Alveolar Macrophages (`r unique(metadata$cell_type[2])`), and Regulatory Macrophages (`r unique(metadata$cell_type[3])`), the latter two being extracted from bronchoalveolar lavage fluid. Cells were isolated by Flow Cytometry and sequenced in Bulk. 
+
+
+## Clean up 
+```{r}
 
 # Set conditions variables as factors
 metadata$patient_group <- factor(metadata$patient_group)
@@ -57,11 +98,8 @@ colnames(counts)[1] <- "genes"
 
 row.names(counts) <- counts$genes
 
-head(counts)
-
 colnames(metadata)[1] <- "samples"
 
-head(metadata)
 ```
 
 
@@ -221,28 +259,28 @@ subRes005 <- subset(res, padj < 0.005)
 
 ## Define function to visualize MA plots
 ```{r}
-plotMA_arrange_iterative <- function(res_list) {
-  plots <- list()
-
-  for (i in seq_along(res_list)) {
-    res <- res_list[[i]]
-    res_name <- names(res_list)[i] # Get the name of the res object
-    p <- plotMA(res, returnData = TRUE) # DESeq2's PlotMA function
-    p_plot <- ggplot(p, aes(x = mean, y = lfc, color = isDE)) +
-      geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) + # Reduce non DEG genes transperancy
-      scale_x_continuous(trans = "log10") + # Scale mean counts
-      ylim(-2, 2) +
-      labs(title = res_name) # Use the name in the plot title
-
-    plots[[i]] <- p_plot
-  }
-
-  do.call(grid.arrange, c(plots, nrow = 2))
-}
+# plotMA_arrange_iterative <- function(res_list) {
+#   plots <- list()
+# 
+#   for (i in seq_along(res_list)) {
+#     res <- res_list[[i]]
+#     res_name <- names(res_list)[i] # Get the name of the res object
+#     p <- plotMA(res, returnData = TRUE) # DESeq2's PlotMA function
+#     p_plot <- ggplot(p, aes(x = mean, y = lfc, color = isDE)) +
+#       geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) + # Reduce non DEG genes transperancy
+#       scale_x_continuous(trans = "log10") + # Scale mean counts
+#       ylim(-2, 2) +
+#       labs(title = res_name) # Use the name in the plot title
+# 
+#     plots[[i]] <- p_plot
+#   }
+# 
+#   do.call(grid.arrange, c(plots, nrow = 2))
+# }
 ```
 
 
-### Visualize DEG results
+## Visualize DEG results
 ```{r}
 # Visualize log2 fold changes of a given variable over the mean of normalized counts for all samples
 
@@ -256,7 +294,7 @@ plotMA_arrange_iterative(res_list)
 ```
 
 
-### Visualizing alternate contrasts
+## Visualizing alternate contrasts
 ```{r}
 res_list <- list(
   "Smoker vs Non_Smoker DEG's" = res,
@@ -268,7 +306,7 @@ plotMA_arrange_iterative(res_list)
 ```
 
 
-### Visualize Log Fold Shrunken MA Plots
+## Visualize Log Fold Shrunken MA Plots
 ```{r}
 # Plot log fold shrunken DEG's
 res_list <- list(
@@ -280,7 +318,7 @@ res_list <- list(
 plotMA_arrange_iterative(res_list)
 ```
 
-### visualize subset results
+## visualize subset results
 ```{r}
 # Plot log fold shrunken DEG's
 res_list <- list(
