@@ -74,3 +74,46 @@ plot(pressure)
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+## Load data
+```{r}
+# Load CSV's for gene counts & metadata. Retain untidy names for ease
+counts <- read.csv("Data/GSE183973_bulkRNA_gene_counts.csv",
+  check.names = FALSE
+)
+
+metadata <- read.csv("Data/GSE183973_metadata_samples.csv",
+  check.names = FALSE
+)
+```
+
+
+Initially, Two sets of variables are considered for this analysis.  
+
+Cell types: $`r unique(metadata$cell_type)`
+
+Patient Groups: `r format(unique(metadata$patient_group))`
+
+There are `r format(length(unique(metadata$patient_initials)))` patients evenly spread across the `r format(length(unique(metadata$patient_group)))` groups. Each patient contributing Blood Monocytes (`r unique(metadata$cell_type[1])`), Alveolar Macrophages (`r unique(metadata$cell_type[2])`), and Regulatory Macrophages (`r unique(metadata$cell_type[3])`), the latter two being extracted from bronchoalveolar lavage fluid. Cells were isolated by Flow Cytometry and sequenced in Bulk. 
+
+## Clean up 
+```{r}
+
+# # Set conditions variables as factors
+# metadata$patient_group <- factor(metadata$patient_group)
+# 
+# metadata$cell_type <- factor(metadata$cell_type)
+# 
+# # Define missing column names
+# colnames(counts)[1] <- "genes"
+# 
+# row.names(counts) <- counts$genes
+# 
+# colnames(metadata)[1] <- "samples"
+
+head(counts)
+
+head(metadata)
+
+
+```
