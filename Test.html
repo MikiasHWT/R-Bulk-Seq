@@ -3933,6 +3933,8 @@ pointer-events: auto;
 <ul>
 <li><a href="#r-markdown" id="toc-r-markdown"><span class="toc-section-number">0.1</span> R Markdown</a></li>
 <li><a href="#including-plots" id="toc-including-plots"><span class="toc-section-number">0.2</span> Including Plots</a></li>
+<li><a href="#load-data" id="toc-load-data"><span class="toc-section-number">0.3</span> Load data</a></li>
+<li><a href="#clean-up" id="toc-clean-up"><span class="toc-section-number">0.4</span> Clean up</a></li>
 </ul>
 </div>
 
@@ -3978,8 +3980,8 @@ lo/+, CD43hi, CX3CR1hi, CXCR1(hi), CCR2-, CD62L-, Ly6C-lo</p>
   </script>
 </div>
 <div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">datatable</span>(cars)</span></code></pre></div>
-<div class="datatables html-widget html-fill-item" id="htmlwidget-5f56a414e21a8a7a3b17" style="width:100%;height:auto;"></div>
-<script type="application/json" data-for="htmlwidget-5f56a414e21a8a7a3b17">{"x":{"filter":"none","vertical":false,"data":[["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48","49","50"],[4,4,7,7,8,9,10,10,10,11,11,12,12,12,12,13,13,13,13,14,14,14,14,15,15,15,16,16,17,17,17,18,18,18,18,19,19,19,20,20,20,20,20,22,23,24,24,24,24,25],[2,10,4,22,16,10,18,26,34,17,28,14,20,24,28,26,34,34,46,26,36,60,80,20,26,54,32,40,32,40,50,42,56,76,84,36,46,68,32,48,52,56,64,66,54,70,92,93,120,85]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>speed<\/th>\n      <th>dist<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"speed","targets":1},{"name":"dist","targets":2}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+<div class="datatables html-widget html-fill-item" id="htmlwidget-bdd9f9db5811cd761515" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-bdd9f9db5811cd761515">{"x":{"filter":"none","vertical":false,"data":[["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48","49","50"],[4,4,7,7,8,9,10,10,10,11,11,12,12,12,12,13,13,13,13,14,14,14,14,15,15,15,16,16,17,17,17,18,18,18,18,19,19,19,20,20,20,20,20,22,23,24,24,24,24,25],[2,10,4,22,16,10,18,26,34,17,28,14,20,24,28,26,34,34,46,26,36,60,80,20,26,54,32,40,32,40,50,42,56,76,84,36,46,68,32,48,52,56,64,66,54,70,92,93,120,85]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>speed<\/th>\n      <th>dist<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"speed","targets":1},{"name":"dist","targets":2}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
 </div>
 <div id="including-plots" class="section level2" number="0.2">
 <h2><span class="header-section-number">0.2</span> Including Plots</h2>
@@ -3988,6 +3990,53 @@ lo/+, CD43hi, CX3CR1hi, CXCR1(hi), CCR2-, CD62L-, Ly6C-lo</p>
 <p>Note that the <code>echo = FALSE</code> parameter was added to the
 code chunk to prevent printing of the R code that generated the
 plot.</p>
+</div>
+<div id="load-data" class="section level2" number="0.3">
+<h2><span class="header-section-number">0.3</span> Load data</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="co"># Load CSV&#39;s for gene counts &amp; metadata. Retain untidy names for ease</span></span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>counts <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="st">&quot;Data/GSE183973_bulkRNA_gene_counts.csv&quot;</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>  <span class="at">check.names =</span> <span class="cn">FALSE</span></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>)</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>metadata <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="st">&quot;Data/GSE183973_metadata_samples.csv&quot;</span>,</span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a>  <span class="at">check.names =</span> <span class="cn">FALSE</span></span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a>)</span></code></pre></div>
+<p>Initially, Two sets of variables are considered for this
+analysis.</p>
+<p>Cell types: $mono, ma, mreg</p>
+<p>Patient Groups: smoker , non_smoker, copd</p>
+<p>There are 9 patients evenly spread across the 3 groups. Each patient
+contributing Blood Monocytes (mono), Alveolar Macrophages (ma), and
+Regulatory Macrophages (mreg), the latter two being extracted from
+bronchoalveolar lavage fluid. Cells were isolated by Flow Cytometry and
+sequenced in Bulk.</p>
+</div>
+<div id="clean-up" class="section level2" number="0.4">
+<h2><span class="header-section-number">0.4</span> Clean up</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="co"># # Set conditions variables as factors</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="co"># metadata$patient_group &lt;- factor(metadata$patient_group)</span></span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a><span class="co"># </span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a><span class="co"># metadata$cell_type &lt;- factor(metadata$cell_type)</span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a><span class="co"># </span></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a><span class="co"># # Define missing column names</span></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="co"># colnames(counts)[1] &lt;- &quot;genes&quot;</span></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="co"># </span></span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a><span class="co"># row.names(counts) &lt;- counts$genes</span></span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a><span class="co"># </span></span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a><span class="co"># colnames(metadata)[1] &lt;- &quot;samples&quot;</span></span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a></span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a><span class="fu">head</span>(counts)</span></code></pre></div>
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":[""],"name":[1],"type":["chr"],"align":["left"]},{"label":["17.non_smoker.pk.ma_NGS19.K322"],"name":[2],"type":["int"],"align":["right"]},{"label":["25.copd.hp.mono_NGS19.K362"],"name":[3],"type":["int"],"align":["right"]},{"label":["10.smoker.ag.mono_NGS19.K315"],"name":[4],"type":["int"],"align":["right"]},{"label":["16.non_smoker.pk.mono_NGS19.K321"],"name":[5],"type":["int"],"align":["right"]},{"label":["30.copd.wa.mreg_NGS19.K367"],"name":[6],"type":["int"],"align":["right"]},{"label":["22.smoker.wb.mono_NGS19.K327"],"name":[7],"type":["int"],"align":["right"]},{"label":["4.non_smoker.do.mono_NGS19.K309"],"name":[8],"type":["int"],"align":["right"]},{"label":["28.copd.wa.mono_NGS19.K365"],"name":[9],"type":["int"],"align":["right"]},{"label":["27.copd.hp.mreg_NGS19.K364"],"name":[10],"type":["int"],"align":["right"]},{"label":["7.smoker.lc.mono_NGS19.K312"],"name":[11],"type":["int"],"align":["right"]},{"label":["21.copd.gm.mreg_NGS19.K326"],"name":[12],"type":["int"],"align":["right"]},{"label":["5.non_smoker.do.ma_NGS19.K310"],"name":[13],"type":["int"],"align":["right"]},{"label":["11.smoker.ag.ma_NGS19.K316"],"name":[14],"type":["int"],"align":["right"]},{"label":["29.copd.wa.ma_NGS19.K366"],"name":[15],"type":["int"],"align":["right"]},{"label":["18.non_smoker.pk.mreg_NGS19.K323"],"name":[16],"type":["int"],"align":["right"]},{"label":["19.copd.gm.mono_NGS19.K324"],"name":[17],"type":["int"],"align":["right"]},{"label":["14.non_smoker.ld.ma_NGS19.K319"],"name":[18],"type":["int"],"align":["right"]},{"label":["24.smoker.wb.mreg_NGS19.K329"],"name":[19],"type":["int"],"align":["right"]},{"label":["8.smoker.lc.ma_NGS19.K313"],"name":[20],"type":["int"],"align":["right"]},{"label":["9.smoker.lc.mreg_NGS19.K314"],"name":[21],"type":["int"],"align":["right"]},{"label":["6.non_smoker.do.mreg_NGS19.K311"],"name":[22],"type":["int"],"align":["right"]},{"label":["26.copd.hp.ma_NGS19.K363"],"name":[23],"type":["int"],"align":["right"]},{"label":["23.smoker.wb.ma_NGS19.K328"],"name":[24],"type":["int"],"align":["right"]},{"label":["12.smoker.ag.mreg_NGS19.K317"],"name":[25],"type":["int"],"align":["right"]},{"label":["20.copd.gm.ma_NGS19.K325"],"name":[26],"type":["int"],"align":["right"]},{"label":["13.non_smoker.ld.mono_NGS19.K318"],"name":[27],"type":["int"],"align":["right"]},{"label":["15.non_smoker.ld.mreg_NGS19.K320"],"name":[28],"type":["int"],"align":["right"]}],"data":[{"1":"DDX11L1","2":"0","3":"0","4":"0","5":"0","6":"0","7":"0","8":"0","9":"0","10":"0","11":"0","12":"0","13":"0","14":"0","15":"0","16":"0","17":"0","18":"0","19":"0","20":"0","21":"0","22":"0","23":"0","24":"0","25":"0","26":"0","27":"0","28":"0","_rn_":"1"},{"1":"WASH7P","2":"32","3":"69","4":"104","5":"76","6":"77","7":"69","8":"75","9":"87","10":"49","11":"72","12":"35","13":"35","14":"55","15":"67","16":"56","17":"73","18":"34","19":"79","20":"32","21":"44","22":"40","23":"29","24":"85","25":"54","26":"24","27":"82","28":"46","_rn_":"2"},{"1":"MIR1302-10","2":"0","3":"0","4":"0","5":"0","6":"0","7":"0","8":"0","9":"0","10":"0","11":"0","12":"0","13":"0","14":"0","15":"0","16":"0","17":"0","18":"0","19":"0","20":"0","21":"0","22":"0","23":"0","24":"0","25":"0","26":"0","27":"0","28":"0","_rn_":"3"},{"1":"FAM138A","2":"0","3":"0","4":"0","5":"0","6":"0","7":"0","8":"0","9":"0","10":"0","11":"0","12":"0","13":"0","14":"0","15":"0","16":"0","17":"0","18":"0","19":"0","20":"0","21":"0","22":"0","23":"0","24":"0","25":"0","26":"0","27":"0","28":"0","_rn_":"4"},{"1":"OR4G4P","2":"0","3":"0","4":"0","5":"0","6":"0","7":"0","8":"0","9":"0","10":"0","11":"0","12":"0","13":"0","14":"0","15":"0","16":"0","17":"0","18":"0","19":"0","20":"0","21":"0","22":"0","23":"0","24":"0","25":"0","26":"0","27":"0","28":"0","_rn_":"5"},{"1":"OR4G11P","2":"0","3":"0","4":"0","5":"0","6":"0","7":"0","8":"0","9":"0","10":"0","11":"0","12":"0","13":"0","14":"0","15":"0","16":"0","17":"0","18":"0","19":"0","20":"0","21":"0","22":"0","23":"0","24":"0","25":"0","26":"0","27":"0","28":"0","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="fu">head</span>(metadata)</span></code></pre></div>
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":[""],"name":[1],"type":["chr"],"align":["left"]},{"label":["patient_group"],"name":[2],"type":["chr"],"align":["left"]},{"label":["patient_initials"],"name":[3],"type":["chr"],"align":["left"]},{"label":["cell_type"],"name":[4],"type":["chr"],"align":["left"]}],"data":[{"1":"10.smoker.ag.mono_NGS19.K315","2":"smoker","3":"ag","4":"mono","_rn_":"1"},{"1":"11.smoker.ag.ma_NGS19.K316","2":"smoker","3":"ag","4":"ma","_rn_":"2"},{"1":"12.smoker.ag.mreg_NGS19.K317","2":"smoker","3":"ag","4":"mreg","_rn_":"3"},{"1":"13.non_smoker.ld.mono_NGS19.K318","2":"non_smoker","3":"ld","4":"mono","_rn_":"4"},{"1":"14.non_smoker.ld.ma_NGS19.K319","2":"non_smoker","3":"ld","4":"ma","_rn_":"5"},{"1":"15.non_smoker.ld.mreg_NGS19.K320","2":"non_smoker","3":"ld","4":"mreg","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
 </div>
 </div><!-- /.entry-content -->
 </article>

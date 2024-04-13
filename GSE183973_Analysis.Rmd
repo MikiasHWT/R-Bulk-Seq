@@ -8,6 +8,7 @@ output:
     toc: yes
     df_print: paged
 ---
+
 ***Work in progress*** 
 (https://github.com/MikiasHWT/Bulk-RNA-Seq)
 
@@ -27,16 +28,20 @@ library(RColorBrewer) # Color themes
 library(EnhancedVolcano) # Pleasing volcano plots
 library(gridExtra) # GGplot extention
 library(DT) # nice data tables
+library(SparseArray)
 # library(GO.db) # Gene ontology
 # library(GOstats) # Gene ontology
 # library(clusterProfiler) # over representation/gene enrichment
 ```
 
-Define functions
+Define MA Plotting function
+**MA plot** visualizes relationships between log ratio & mean values of two variables:
+	• 	“M” = minus in the log scale. Log ratios on (y) axis.
+	• 	“A” = average in the log scale. The mean values on (x) axis.
 ```{r}
-# MA Plots 
+# MA Plots
 # Arranged into 2 rows
-# Color & translucency by DEG 
+# Color & translucency by DEG
 # Plot titles fed in as arguments
 # Mean counts (x-axis) Log10 transformed
 
@@ -61,7 +66,12 @@ plotMA_arrange_iterative <- function(res_list) {
 ```
 
 
-# Preperation 
+
+Define Heatmap plotting function
+```{r}
+```
+
+# Preparation  
 ***Note:*** Using GEOquery will require some troubleshooting as the GSE submission for this dataset lacked feature information. Instead the CSV files for gene counts and metadata can be download directly from [GEO](https://www.ncbi.nlm.nih.gov/geo/) and saved locally.
 
 ## Load data
@@ -74,20 +84,23 @@ counts <- read.csv("Data/GSE183973_bulkRNA_gene_counts.csv",
 metadata <- read.csv("Data/GSE183973_metadata_samples.csv",
   check.names = FALSE
 )
+
+head(counts)
+
+head(metadata)
 ```
 
 Initially, Two sets of variables are considered for this analysis.  
 
-Cell types: `r format(unique(metadata$cell_type))`
+Cell types: `r unique(metadata$cell_type)`
 
-Patient Groups: `r format(unique(metadata$patient_group))`
+Patient Groups: `r unique(metadata$patient_group)`
 
-There are `r format(length(unique(metadata$patient_initials)))` patients evenly spread across the `r format(length(unique(metadata$patient_group)))` groups. Each patient contributing Blood Monocytes (`r unique(metadata$cell_type[1])`), Alveolar Macrophages (`r unique(metadata$cell_type[2])`), and Regulatory Macrophages (`r unique(metadata$cell_type[3])`), the latter two being extracted from bronchoalveolar lavage fluid. Cells were isolated by Flow Cytometry and sequenced in Bulk. 
+There are `r length(unique(metadata$patient_initials))` patients evenly spread across the `r length(unique(metadata$patient_group))` groups. Each patient contributing Blood Monocytes (`r unique(metadata$cell_type[1])`), Alveolar Macrophages (`r unique(metadata$cell_type[2])`), and Regulatory Macrophages (`r unique(metadata$cell_type[3])`), the latter two being extracted from bronchoalveolar lavage fluid. Cells were isolated by Flow Cytometry and sequenced in Bulk. 
 
 
 ## Clean up 
 ```{r}
-
 # Set conditions variables as factors
 metadata$patient_group <- factor(metadata$patient_group)
 
@@ -99,7 +112,6 @@ colnames(counts)[1] <- "genes"
 row.names(counts) <- counts$genes
 
 colnames(metadata)[1] <- "samples"
-
 ```
 
 
@@ -171,7 +183,6 @@ summary(res05)
 sum(res$padj < 0.1, na.rm = TRUE)
 
 sum(res05$padj < 0.05, na.rm = TRUE)
-
 ```
 
 
@@ -232,11 +243,10 @@ subRes01 <- subset(res, padj < 0.01)
 subRes005 <- subset(res, padj < 0.005)
 
 # DEG05 <- subRes05@rownames
-# 
+#
 # DEG01 <- subRes01@rownames
-# 
+#
 # DEG005 <- subRes005@rownames
-
 ```
 
 
@@ -251,35 +261,7 @@ subRes005 <- subset(res, padj < 0.005)
 ```
 
 
-***MA plot*** visualizes relationships between log ratio & mean values of two variables:
-	• 	“M” = minus in the log scale. Log ratios on (y) axis.
-	• 	“A” = average in the log scale. The mean values on (x) axis. 
-
 # Visualize
-
-## Define function to visualize MA plots
-```{r}
-# plotMA_arrange_iterative <- function(res_list) {
-#   plots <- list()
-# 
-#   for (i in seq_along(res_list)) {
-#     res <- res_list[[i]]
-#     res_name <- names(res_list)[i] # Get the name of the res object
-#     p <- plotMA(res, returnData = TRUE) # DESeq2's PlotMA function
-#     p_plot <- ggplot(p, aes(x = mean, y = lfc, color = isDE)) +
-#       geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) + # Reduce non DEG genes transperancy
-#       scale_x_continuous(trans = "log10") + # Scale mean counts
-#       ylim(-2, 2) +
-#       labs(title = res_name) # Use the name in the plot title
-# 
-#     plots[[i]] <- p_plot
-#   }
-# 
-#   do.call(grid.arrange, c(plots, nrow = 2))
-# }
-```
-
-
 ## Visualize DEG results
 ```{r}
 # Visualize log2 fold changes of a given variable over the mean of normalized counts for all samples
@@ -328,28 +310,121 @@ res_list <- list(
 )
 
 plotMA_arrange_iterative(res_list)
-
 ```
 
 **Note**: If there is unwanted variation present in the data (e.g. batch effects) it is always recommend to correct for this, which can be accommodated in DESeq2 by including in the design any known batch variables or by using functions/packages such as svaseq in sva (Leek 2014) or the RUV functions in RUVSeq (Risso et al. 2014) to estimate variables that capture the unwanted variation. In addition, the ashr developers have a specific method for accounting for unwanted variation in combination with ashr (Gerard and Stephens 2017).
 
+
 # Transform
 
-## Compare transformations and impact on data variance 
+## Raw gene variance 
+Raw RNA sequencing counts have a high degree of variability; which increases with a genes average expression level. This variability needs to be accounted before some downstream analysis such as visualization and clustering. We do this by transforming the data such that the variance is stabilized across the entire spectrum of expression values, allowing for use of statistical models/methods where that is a requirement. 
+
 ```{r}
+# Filter out low expressed genes
+keep <- rowSums(geneCounts) > 10
+
+filtCounts <- as.matrix(geneCounts[keep, ])
+
+# Visualize gene expression values by sample
+boxplot(filtCounts, main = "Raw counts", ylab = "Gene Expression", las = 2)
+
+# Mean expression vs standard deviation (SD)
+plot(rowMeans(filtCounts), rowSds(filtCounts),
+  main = "Raw counts: Mean vs SD",
+  xlim = c(0, 10000),
+  ylim = c(0, 5000)
+)
+
+# Save as ggplot
+Raw <- ggplot(filtCounts, aes(
+  x = rowMeans(filtCounts),
+  y = rowSds(filtCounts)
+)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Raw", x = "Mean", y = "SD")
+
+```
+
+
+## Various Transformations
+
+Log2 fold transformation were the standard in the past, but they can result in over representation of low expressed genes. As such various other methods are implemented. The goal is that the standard deviation stays consistent across all mean values of gene expression. vst and rlog have pros and cons determined by the number of samples. 
+
+```{r}
+# Get log2 counts
+logcounts <- log2(filtCounts + 1)
+
+# Plot mean vs SD
+Log2 <- ggplot(logcounts, aes(
+  x = rowMeans(logcounts),
+  y = rowSds(logcounts)
+)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Log2", x = "Mean", y = "SD")
+  
+# Variance stabilizing transformation
+vst_counts <- vst(filtCounts)
+
+# Plot
+VST <- ggplot(vst_counts, aes(
+  x = rowMeans(vst_counts),
+  y = rowSds(vst_counts)
+)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "VST", x = "Mean", y = "SD")
+
+# Rlog counts
+rlog_counts <- rlog(filtCounts)
+
+# Plot
+Rlog <- ggplot(rlog_counts, aes(
+  x = rowMeans(rlog_counts),
+  y = rowSds(rlog_counts)
+)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Rlog", x = "Mean", y = "SD")
+
+# Arrange Plots
+grid.arrange(Raw, Log2, VST, Rlog, nrow=2)
+
+```
+
+```{r}
+select <- order(rowMeans(rlog_counts), decreasing = TRUE)[1:20]
+
+df <- as.data.frame(metadata[, c("patient_group", "cell_type")])
+
+pheatmap(rlog_counts[select,], main = "rlog", 
+         cluster_rows = TRUE, show_rownames = TRUE,
+         cluster_cols = TRUE, show_colnames = FALSE)
+
+
+```
+
+
+
+```{r}
+
 # Variance stabilizing transformation. (log2 scaling for large counts)
-vsd <- vst(dds, blind = FALSE)
+# vsd <- vst(dds, blind = FALSE)
+#
+# rld <- rlog(dds, blind = FALSE)
+#
+# ntd <- normTransform(dds)
+#
+#
+#
+# meanSdPlot(assay(ntd))
+#
+# meanSdPlot(assay(vsd))
+#
+# meanSdPlot(assay(rld))
 
-rld <- rlog(dds, blind = FALSE)
-
-ntd <- normTransform(dds)
-
-
-meanSdPlot(assay(ntd))
-
-meanSdPlot(assay(vsd))
-
-meanSdPlot(assay(rld))
 ```
 
 # Quality Assesment
@@ -363,24 +438,27 @@ select <- order(rowMeans(counts(dds, normalized = TRUE)),
 df <- as.data.frame(colData(dds)[, c("patient_group", "cell_type")])
 
 pheatmap(assay(ntd)[select, ],
-  cluster_rows = FALSE, show_rownames = FALSE,
-  cluster_cols = FALSE, annotation_col = df
+  cluster_rows = TRUE, show_rownames = TRUE,
+  cluster_cols = TRUE, annotation_col = df, show_colnames = FALSE,
+  main = "ntd", scale = "row"
 )
 
 pheatmap(assay(vsd)[select, ],
-  cluster_rows = FALSE, show_rownames = FALSE,
-  cluster_cols = FALSE, annotation_col = df
+  cluster_rows = TRUE, show_rownames = TRUE,
+  cluster_cols = TRUE, annotation_col = df, show_colnames = FALSE,
+  main = "vsd", scale = "row"
 )
 
 pheatmap(assay(rld)[select, ],
-  cluster_rows = FALSE, show_rownames = FALSE,
-  cluster_cols = FALSE, annotation_col = df
+  cluster_rows = TRUE, show_rownames = TRUE,
+  cluster_cols = TRUE, annotation_col = df, show_colnames = FALSE,
+  main = "rld", scale = "row"
 )
 ```
 
 ## Sample distance
 ```{r}
-# Determine between group variety  
+# Determine between group variety
 sampleDists <- dist(t(assay(vsd)))
 
 sampleDistMatrix <- as.matrix(sampleDists)
