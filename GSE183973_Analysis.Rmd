@@ -395,13 +395,13 @@ grid.arrange(Raw, Log2, VST, Rlog, nrow=2)
 ```
 
 ```{r}
-select <- order(rowMeans(rlog_counts), decreasing = TRUE)[1:20]
-
-df <- as.data.frame(metadata[, c("patient_group", "cell_type")])
-
-pheatmap(rlog_counts[select,], main = "rlog", 
-         cluster_rows = TRUE, show_rownames = TRUE,
-         cluster_cols = TRUE, show_colnames = FALSE)
+# select <- order(rowMeans(rlog_counts), decreasing = TRUE)[1:20]
+# 
+# df <- as.data.frame(metadata[, c("patient_group", "cell_type")])
+# 
+# pheatmap(rlog_counts[select,], main = "rlog", 
+#          cluster_rows = TRUE, show_rownames = TRUE,
+#          cluster_cols = TRUE, show_colnames = FALSE)
 
 
 ```
@@ -411,18 +411,18 @@ pheatmap(rlog_counts[select,], main = "rlog",
 ```{r}
 
 # Variance stabilizing transformation. (log2 scaling for large counts)
-# vsd <- vst(dds, blind = FALSE)
-#
-# rld <- rlog(dds, blind = FALSE)
-#
-# ntd <- normTransform(dds)
-#
-#
-#
+vsd <- vst(dds, blind = FALSE)
+
+rld <- rlog(dds, blind = FALSE)
+
+ntd <- normTransform(dds)
+
+
+# 
 # meanSdPlot(assay(ntd))
-#
+# 
 # meanSdPlot(assay(vsd))
-#
+# 
 # meanSdPlot(assay(rld))
 
 ```

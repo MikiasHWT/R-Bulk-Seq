@@ -90,11 +90,11 @@ metadata <- read.csv("Data/GSE183973_metadata_samples.csv",
 
 Initially, Two sets of variables are considered for this analysis.  
 
-Cell types: $`r unique(metadata$cell_type)`
+Cell types: `r unique(metadata$cell_type)`
 
-Patient Groups: `r format(unique(metadata$patient_group))`
+Patient Groups: `r unique(metadata$patient_group)`
 
-There are `r format(length(unique(metadata$patient_initials)))` patients evenly spread across the `r format(length(unique(metadata$patient_group)))` groups. Each patient contributing Blood Monocytes (`r unique(metadata$cell_type[1])`), Alveolar Macrophages (`r unique(metadata$cell_type[2])`), and Regulatory Macrophages (`r unique(metadata$cell_type[3])`), the latter two being extracted from bronchoalveolar lavage fluid. Cells were isolated by Flow Cytometry and sequenced in Bulk. 
+There are `r length(unique(metadata$patient_initials))` patients evenly spread across the `r length(unique(metadata$patient_group))` groups. Each patient contributing Blood Monocytes (`r unique(metadata$cell_type[1])`), Alveolar Macrophages (`r unique(metadata$cell_type[2])`), and Regulatory Macrophages (`r unique(metadata$cell_type[3])`), the latter two being extracted from bronchoalveolar lavage fluid. Cells were isolated by Flow Cytometry and sequenced in Bulk. 
 
 ## Clean up 
 ```{r}
