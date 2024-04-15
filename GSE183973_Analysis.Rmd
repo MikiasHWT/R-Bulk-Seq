@@ -18,7 +18,6 @@ Load libraries
 ```{r results='hide', message=FALSE, warning=FALSE}
 library(prettydoc)
 # library(GEOquery) # import datasets from GEO (unused)
-library(tidyverse) # data wrangling & visualization
 library(DESeq2) # Diverential gene expression analysis
 library(vsn) # Transformation
 library(apeglm) # log fold shrinking (adaptive t prior shrinkage estimator)
@@ -29,9 +28,33 @@ library(EnhancedVolcano) # Pleasing volcano plots
 library(gridExtra) # GGplot extention
 library(DT) # nice data tables
 library(SparseArray)
+library(ggvenn)
+library(qvalue)
+
+library(org.Mm.eg.db) # Mouse database
+library(org.Hs.eg.db) # Human database
+library(DOSE)
+library(pathview)
+library(clusterProfiler) # over representation/gene enrichment
+library(AnnotationHub)
+library(ensembldb)
+library(enrichplot)
+library(biomaRt)
 # library(GO.db) # Gene ontology
 # library(GOstats) # Gene ontology
-# library(clusterProfiler) # over representation/gene enrichment
+library(tidyverse) # data wrangling & visualization
+library(conflicted)
+```
+
+Conflicted functions
+```{r results='hide', message=FALSE, warning=FALSE}
+# Set function preferences
+conflicts_prefer(dplyr::select)
+
+conflicts_prefer(dplyr::filter)
+
+conflicts_prefer(SparseArray::rowSds)
+
 ```
 
 Define MA Plotting function
@@ -165,6 +188,9 @@ resultsNames(dds)
 
 
 # Results
+**Note** U-shaped p-value histograms-can indicate that a one-sided test was performed on data where there is signal in both directions, or it can indicate that there is dependence among the variables in the data.
+
+Might be worth checking `cell_type:patient_group` interaction term. As Pvalue histogram has a little Ushape to it. 
 
 ## View results of default DEG analysis
 ```{r}
@@ -175,14 +201,69 @@ res <- results(dds)
 res05 <- results(dds, alpha = 0.05)
 
 # Default contrast will be "smoker" vs reference group "non_smoker"
-datatable(head(as.data.frame(res05)))
+head(as.data.frame(res05))
 
 summary(res05)
 
-# Count of DEG's
+# Count of DEG's & display pvalue histograms
 sum(res$padj < 0.1, na.rm = TRUE)
 
+hist(res$pvalue)
+
+# Set a more strict FDR cutoff
 sum(res05$padj < 0.05, na.rm = TRUE)
+
+hist(res05$pvalue)
+```
+
+
+## FDR estimations
+```{r}
+qobj <- qvalue(res$pvalue)
+
+summary(qobj)
+
+hist(qobj)
+
+plot(qobj)
+```
+
+
+## Test interaction term
+```{r} 
+# dds2 <- DESeqDataSetFromMatrix(
+#   countData = geneCounts,
+#   colData = metadata,
+#   design = ~ cell_type + patient_group + cell_type:patient_group
+# )
+#
+# dds2 <- estimateSizeFactors(dds2)
+#
+# keep <- rowSums(counts(dds2)) >= 10
+#
+# dds2 <- dds2[keep, ]
+#
+# dds2$patient_group <- relevel(dds2$patient_group, ref = "non_smoker")
+#
+# dds2 <- DESeq(dds2)
+#
+# resultsNames(dds2)
+#
+# res105 <- results(dds2, alpha = 0.1)
+#
+# summary(res105)
+#
+# sum(res105$padj < 0.1, na.rm = TRUE)
+#
+# hist(res105$pvalue)
+#
+# qobj2 <- qvalue(res105$pvalue)
+#
+# summary(qobj2)
+#
+# hist(qobj2)
+#
+# plot(qobj2)
 ```
 
 
@@ -193,20 +274,40 @@ sum(res05$padj < 0.05, na.rm = TRUE)
 # COPD vs Non-Smoker
 resCOPD <- results(dds, alpha = 0.05, contrast = c("patient_group", "copd", "non_smoker"))
 
-datatable(head(as.data.frame(resCOPD)))
+head(as.data.frame(resCOPD))
 
 summary(resCOPD)
 
 sum(resCOPD$padj < 0.05, na.rm = TRUE)
 
+hist(resCOPD$pvalue)
+
+qobj <- qvalue(resCOPD$pvalue)
+
+summary(qobj)
+
+hist(qobj)
+
+plot(qobj)
+
 # COPD vs Smoker
 resWild <- results(dds, alpha = 0.05, contrast = c("patient_group", "copd", "smoker"))
 
-datatable(head(as.data.frame(resWild)))
+head(as.data.frame(resWild))
 
 summary(resWild)
 
 sum(resWild$padj < 0.05, na.rm = TRUE)
+
+hist(resWild$pvalue)
+
+qobj <- qvalue(resWild$pvalue)
+
+summary(qobj)
+
+hist(qobj)
+
+plot(qobj)
 ```
 
 
@@ -344,7 +445,6 @@ Raw <- ggplot(filtCounts, aes(
   geom_point() +
   geom_smooth() +
   labs(title = "Raw", x = "Mean", y = "SD")
-
 ```
 
 
@@ -364,7 +464,7 @@ Log2 <- ggplot(logcounts, aes(
   geom_point() +
   geom_smooth() +
   labs(title = "Log2", x = "Mean", y = "SD")
-  
+
 # Variance stabilizing transformation
 vst_counts <- vst(filtCounts)
 
@@ -390,26 +490,22 @@ Rlog <- ggplot(rlog_counts, aes(
   labs(title = "Rlog", x = "Mean", y = "SD")
 
 # Arrange Plots
-grid.arrange(Raw, Log2, VST, Rlog, nrow=2)
-
+grid.arrange(Raw, Log2, VST, Rlog, nrow = 2)
 ```
 
 ```{r}
 # select <- order(rowMeans(rlog_counts), decreasing = TRUE)[1:20]
-# 
+#
 # df <- as.data.frame(metadata[, c("patient_group", "cell_type")])
-# 
-# pheatmap(rlog_counts[select,], main = "rlog", 
+#
+# pheatmap(rlog_counts[select,], main = "rlog",
 #          cluster_rows = TRUE, show_rownames = TRUE,
 #          cluster_cols = TRUE, show_colnames = FALSE)
-
-
 ```
 
 
 
 ```{r}
-
 # Variance stabilizing transformation. (log2 scaling for large counts)
 vsd <- vst(dds, blind = FALSE)
 
@@ -418,13 +514,12 @@ rld <- rlog(dds, blind = FALSE)
 ntd <- normTransform(dds)
 
 
-# 
+#
 # meanSdPlot(assay(ntd))
-# 
+#
 # meanSdPlot(assay(vsd))
-# 
+#
 # meanSdPlot(assay(rld))
-
 ```
 
 # Quality Assesment
@@ -617,6 +712,17 @@ EnhancedVolcano(res,
   labSize = 6.0,
   colAlpha = 0.3
 )
+
+resLFC_DF <- as.data.frame(resLFC) %>%
+  rownames_to_column("GeneID")
+
+resLFC_DF <- resLFC_DF %>%
+  mutate(`-log10(pvalue)` = -log10(pvalue))
+
+ggplot(resLFC_DF, aes(x = log2FoldChange, y = `-log10(pvalue)`)) +
+  geom_point(aes(colour = padj < 0.05), size = 1) +
+  geom_text(data = ~ top_n(.x, 5, wt = -padj), aes(label = GeneID)) +
+  labs(title = "Smoker vs NonSmoker")
 ```
 
 
@@ -659,8 +765,125 @@ resOrdered05
 # write.csv(as.data.frame(resOrdered05), file="Smoker_NonSmoker_results_padj05.csv")
 ```
 
+#Venn Diagram
+```{r}
+vennTest <- tibble(Geneid = rownames(res)) %>%
+  mutate(NonSmokerVSSmoker = res$padj < 0.05 &
+    !is.na(res$padj) &
+    res$log2FoldChange > 0) %>%
+  mutate(Smoker = res$padj < 0.05 &
+    !is.na(res$padj) &
+    res$log2FoldChange < 0) %>%
+  mutate(NonSmokerVSCOPD = resCOPD$padj < 0.05 &
+    !is.na(resCOPD$padj) &
+    resCOPD$log2FoldChange > 0) %>%
+  mutate(COPD = resCOPD$padj < 0.05 &
+    !is.na(resCOPD$padj) &
+    resCOPD$log2FoldChange < 0)
+
+ggvenn(vennTest, set_name_size = 4)
+```
+
 # Next Analysis: Enrichment/Over-representation analysis 
 https://yulab-smu.top/biomedical-knowledge-mining-book/index.html
+
+file:///C:/Users/Owner/Downloads/RNASEQ20_Day3_HandsOn.pdf
+
+```{r}
+# Create background dataset for hypergeometric testing using all genes tested for significance in the results
+all_genes <- as.character(rownames(res))
+
+# Extract significant results
+signif_res <- res[res$padj < 0.05 & !is.na(res$padj), ]
+
+signif_genes <- as.character(rownames(signif_res))
+
+# Run GO enrichment analysis
+ego <- enrichGO(
+  gene = signif_genes,
+  universe = all_genes,
+  keyType = "SYMBOL",
+  OrgDb = org.Hs.eg.db,
+  ont = "BP",
+  pAdjustMethod = "BH",
+  qvalueCutoff = 0.05,
+  readable = TRUE
+)
+# Output results from GO analysis to a table
+cluster_summary <- data.frame(ego)
+
+# Visualize
+dotplot(ego, showCategory = 50)
+
+# # Plot enrichment map
+# emapplot(ego, showCategory = 50)
+# 
+# # Calculate term similarity matrix
+# sim_matrix <- pairwise_termsim(ego)
+# 
+# # Plot enrichment map
+# emapplot(ego, showCategory = 50, sim_matrix = sim_matrix)
+
+# To color genes by log2 fold changes
+signif_res_lFC <- signif_res$log2FoldChange
+
+cnetplot(ego,
+  categorySize = "pvalue",
+  showCategory = 5,
+  foldChange = signif_res_lFC,
+  vertex.label.font = 6
+)
+```
+
+
+```{r}
+# # Gene set enrichment analysis (GSEA) using clusterProfiler and Pathview
+# mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+# 
+# mart <- useEnsembl(biomart = "ensembl", 
+#                      dataset = "hsapiens_gene_ensembl")
+# 
+# genes <- getBM(
+#   filters = "chromosome_name",
+#   attributes = "ensembl_gene_id",
+#   values = all_genes,
+#   mart = mart
+# )
+# 
+# 
+# indNA <- which(is.na(genes$entrezgene_id))
+# 
+# genes_noNA <- genes[-indNA, ]
+# 
+# indnodup <- which(duplicated(genes_noNA$ entrezgene_id) == F)
+# 
+# genes_noNA_nodup <- genes_noNA[indnodup, ]
+# 
+# lFC <- res$log2FoldChange[-indNA]
+# 
+# lFC <- lFC[indnodup]
+# 
+# names(lFC) <- genes_noNA_nodup$entrezgene_id
+# 
+# # Sort fold changes in decreasing order
+# lFC <- sort(lFC, decreasing = TRUE)
+# 
+# 
+# # Perform the GSEA using KEGG gene sets:
+# gseaKEGG <- gseKEGG(
+#   geneList = lFC,
+#   organism = "mmu",
+#   nPerm = 1000, # default number permutations
+#   minGSSize = 5, # minimum gene set size
+#   pvalueCutoff = 0.1, # padj cutoff value
+#   verbose = FALSE
+# )
+# 
+# # Extract the GSEA results
+# gseaKEGG_results <- gseaKEGG@result
+
+```
+
 
 Session Info
 ```{r}
