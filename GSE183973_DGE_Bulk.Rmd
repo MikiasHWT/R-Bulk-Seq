@@ -1,0 +1,419 @@
+---
+title: "GSE183973_DGE_Bulk"
+author: "Mikias HW"
+date: "2024-04-17"
+output: 
+  prettydoc::html_pretty:
+    theme: hpstr
+    toc: yes
+    df_print: paged
+---
+***Work in progress*** 
+(https://github.com/MikiasHWT/Bulk-RNA-Seq)
+
+Purpose : Comparison of RNA expression of three innate immune cell populations across three patient groups. 
+
+Load libraries
+```{r results='hide', message=FALSE, warning=FALSE}
+library(prettydoc)
+library(GEOquery) # import datasets from GEO (unused)
+library(DESeq2) # Diverential gene expression analysis
+library(vsn) # Transformation
+library(apeglm) # log fold shrinking (adaptive t prior shrinkage estimator)
+library(ashr) # log fold shrinking (adaptive shrinkage estimator)
+library(pheatmap) # heatmaps
+library(RColorBrewer) # Color themes
+library(EnhancedVolcano) # Pleasing volcano plots
+library(gridExtra) # GGplot extention
+library(qvalue)
+library(tidyverse) # data wrangling & visualization
+library(conflicted)
+```
+
+Conflicted functions
+```{r results='hide', message=FALSE, warning=FALSE}
+# Set function preferences
+conflicts_prefer(dplyr::select)
+
+conflicts_prefer(dplyr::filter)
+
+conflicts_prefer(dplyr::slice)
+
+conflicts_prefer(SparseArray::rowSds)
+
+conflicts_prefer(base::setdiff)
+```
+
+Define MA Plotting function
+**MA plot** visualizes relationships between log ratio & mean values of two variables:
+	• 	“M” = minus in the log scale. Log ratios on (y) axis.
+	• 	“A” = average in the log scale. The mean values on (x) axis.
+```{r}
+# MA Plots
+# Arranged into 2 rows
+# Color & translucency by DEG
+# Plot titles fed in as arguments
+# Mean counts (x-axis) Log10 transformed
+
+plotMA_arrange_iterative <- function(res_list) {
+  plots <- list()
+
+  for (i in seq_along(res_list)) {
+    res <- res_list[[i]]
+    res_name <- names(res_list)[i] # Get the name of the res object
+    p <- plotMA(res, returnData = TRUE) # DESeq2's PlotMA function
+    p_plot <- ggplot(p, aes(x = mean, y = lfc, color = isDE)) +
+      geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) + # Reduce non DEG genes transperancy
+      scale_x_continuous(trans = "log10") + # Scale mean counts
+      ylim(-2, 2) +
+      labs(title = res_name) # Use the name in the plot title
+
+    plots[[i]] <- p_plot
+  }
+
+  do.call(grid.arrange, c(plots, nrow = 2))
+}
+```
+
+# Preparation  
+***Note:*** Using GEOquery will require some troubleshooting as the GSE submission for this dataset lacked feature information. Instead the CSV files for gene counts and metadata can be download directly from [GEO](https://www.ncbi.nlm.nih.gov/geo/) and saved locally.
+
+## Load data
+```{r}
+# Load CSV's for gene counts & metadata. Retain untidy names for ease
+counts <- read.csv("Data/GSE183973_bulkRNA_gene_counts.csv",
+  check.names = FALSE
+)
+
+metadata <- read.csv("Data/GSE183973_metadata_samples.csv",
+  check.names = FALSE
+)
+
+head(counts)
+
+head(metadata)
+
+# datGse <- getGEO("GSE183973")
+# 
+# head(datGse)
+
+```
+
+Initially, Two sets of variables are considered for this analysis.  
+
+Cell types: `r unique(metadata$cell_type)`
+
+Patient Groups: `r unique(metadata$patient_group)`
+
+There are `r length(unique(metadata$patient_initials))` patients evenly spread across the `r length(unique(metadata$patient_group))` groups. Each patient contributing Blood Monocytes (`r unique(metadata$cell_type[1])`), Alveolar Macrophages (`r unique(metadata$cell_type[2])`), and Regulatory Macrophages (`r unique(metadata$cell_type[3])`), the latter two being extracted from bronchoalveolar lavage fluid. Cells were isolated by Flow Cytometry and sequenced in Bulk. 
+
+
+## Clean up 
+```{r}
+# Set conditions variables as factors
+metadata$patient_group <- factor(metadata$patient_group)
+
+metadata$cell_type <- factor(metadata$cell_type)
+
+# Define missing column names
+colnames(counts)[1] <- "genes"
+
+row.names(counts) <- counts$genes
+
+colnames(metadata)[1] <- "samples"
+```
+
+
+## Match samples
+```{r}
+# Remove genes column (gene names retained as index)
+# Assign to new df to retain genes column for later data exploration
+geneCounts <- counts |>
+  select(-genes)
+
+# Match counts column names and metadata row names
+desired_order <- metadata$samples
+
+geneCounts <- geneCounts[, desired_order]
+
+# Confirm match
+all(colnames(geneCounts) %in% metadata$samples)
+
+all(colnames(geneCounts) == metadata$samples)
+```
+
+
+## Construct DESeqDataSet object
+```{r}
+# Define design matrix for DESeq2
+dds <- DESeqDataSetFromMatrix(
+  countData = geneCounts,
+  colData = metadata,
+  design = ~ cell_type + patient_group
+)
+
+# normalization by estimating size factor
+dds <- estimateSizeFactors(dds)
+
+# remove low expressed genes
+keep <- rowSums(counts(dds)) >= 10
+
+dds <- dds[keep, ]
+
+# set factor level (reference group) : Im interested in comparing copd and smokers to the reference group non-smokers in this case.
+dds$patient_group <- relevel(dds$patient_group, ref = "non_smoker")
+
+# Run DEG analysis
+dds <- DESeq(dds)
+
+dds
+
+# lists the contracts
+resultsNames(dds)
+```
+
+
+## Results
+```{r}
+# defaul results with padj = 0.1
+res <- results(dds)
+
+# Specifying a strict FDR (p-adj) cutoff for posterity. (default is 0.1)
+res05 <- results(dds, alpha = 0.05)
+
+# Default contrast will be "smoker" vs reference group "non_smoker"
+head(as.data.frame(res05))
+
+summary(res05)
+
+# Count of DEG's & display pvalue histograms
+sum(res$padj < 0.1, na.rm = TRUE)
+
+# Set a more strict FDR cutoff
+sum(res05$padj < 0.05, na.rm = TRUE)
+
+```
+
+
+## Contrasts
+```{r}
+# Next im curious about seeing the remaining group comparisons
+
+# COPD vs Non-Smoker
+resCOPD <- results(dds, alpha = 0.05, contrast = c("patient_group", "copd", "non_smoker"))
+
+head(as.data.frame(resCOPD))
+
+summary(resCOPD)
+
+sum(resCOPD$padj < 0.05, na.rm = TRUE)
+
+# COPD vs Smoker
+resWild <- results(dds, alpha = 0.05, contrast = c("patient_group", "copd", "smoker"))
+
+head(as.data.frame(resWild))
+
+summary(resWild)
+
+sum(resWild$padj < 0.05, na.rm = TRUE)
+
+```
+
+
+## FDR estimations
+```{r}
+
+# View P-Value histograms for Smoker vs Non-Smoker
+hist(res$pvalue)
+
+qobj <- qvalue(res$pvalue)
+
+summary(qobj)
+
+hist(qobj)
+
+plot(qobj)
+
+# COPD vs Non-Smoker
+
+hist(resCOPD$pvalue)
+
+qobj <- qvalue(resCOPD$pvalue)
+
+summary(qobj)
+
+hist(qobj)
+
+plot(qobj)
+
+# COPD vs Smoker
+
+hist(resWild$pvalue)
+
+qobj <- qvalue(resWild$pvalue)
+
+summary(qobj)
+
+hist(qobj)
+
+plot(qobj)
+```
+
+
+## Log fold Skrink DEG's
+Aids in visualization and gene ranking
+```{r}
+# Adaptive shrinkage estimator
+resLFC <- lfcShrink(dds,
+  coef = "patient_group_smoker_vs_non_smoker",
+  type = "apeglm"
+)
+
+# Original DESeq2 shrinkage estimator
+resNorm <- lfcShrink(dds,
+  coef = "patient_group_smoker_vs_non_smoker",
+  type = "normal"
+)
+
+# Adaptive shrinkage estimator.
+resAsh <- lfcShrink(dds,
+  coef = "patient_group_smoker_vs_non_smoker",
+  type = "ashr"
+)
+
+# Log skrink alternate contrasts
+resCopdLfc <- lfcShrink(dds,
+  coef = "patient_group_copd_vs_non_smoker",
+  type = "apeglm"
+)
+
+resMacrosLFC <- lfcShrink(dds,
+  coef = "cell_type_mreg_vs_ma",
+  type = "apeglm"
+)
+
+resManovMacroLFC <- lfcShrink(dds,
+  coef = "cell_type_mono_vs_ma",
+  type = "apeglm"
+)
+```
+
+
+# Visualize
+## MA Plots
+```{r}
+# Visualize log2 fold changes of a given variable over the mean of normalized counts for all samples
+
+res_list <- list(
+  "Smoker v Healthy: padj=0.1" = res,
+  "Smoker v Healthy: padj=0.05" = res05,
+  "Smoker v Healthy: Log fold shrunk padj=0.1" = resLFC
+)
+
+plotMA_arrange_iterative(res_list)
+
+# Alternate contrasts
+res_list <- list(
+  "Smoker vs Non_Smoker" = res,
+  "COPD v Non Smoker" = resCOPD,
+  "COPD v Smoker" = resWild
+)
+
+plotMA_arrange_iterative(res_list)
+
+# Log fold shrunken
+res_list <- list(
+  "apeglm shrunk" = resLFC,
+  "normal shrunk" = resNorm,
+  "ashr shrunk" = resAsh
+)
+
+plotMA_arrange_iterative(res_list)
+
+# Compare everything
+res_list <- list(
+  "patient_group_smoker_vs_non_smoker" = resLFC,
+  "patient_group_copd_vs_non_smoker" = resCopdLfc,
+  "cell_type_mreg_vs_ma" = resMacrosLFC,
+  "cell_type_mono_vs_ma" = resManovMacroLFC
+)
+
+plotMA_arrange_iterative(res_list)
+```
+
+## Plot various comparisons
+```{r}
+# Plot the gene with the smallest p adj value across specified groupings
+c1 <- plotCounts(dds, gene = which.min(res$padj), intgroup = c("cell_type"), returnData = TRUE)
+
+c1_plot <- ggplot(c1, aes(x = cell_type, y = count)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0)) +
+  scale_y_log10(breaks = c(25, 100, 400))
+
+c2 <- plotCounts(dds, gene = which.min(res$padj), intgroup = c("patient_group"), returnData = TRUE)
+
+c2_plot <- ggplot(c2, aes(x = patient_group, y = count)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0)) +
+  scale_y_log10(breaks = c(25, 100, 400))
+
+c3 <- plotCounts(dds, gene = which.min(res$padj), intgroup = c("cell_type", "patient_group"), returnData = TRUE)
+
+c3_plot <- ggplot(c3, aes(x = patient_group, y = count, color = cell_type)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0)) +
+  scale_y_log10(breaks = c(25, 100, 400))
+
+gridExtra::grid.arrange(c1_plot, c2_plot, c3_plot, nrow = 2)
+
+```
+
+
+```{r}
+
+# plot chosen genes per chosen conditions
+plotCounts(dds, gene = which.min(res$padj), intgroup = "patient_group")
+
+plotCounts(dds, gene = which.min(res$padj), intgroup = "cell_type")
+
+plotCounts(dds, gene = which.min(res$padj), intgroup = c("patient_group", "cell_type"))
+
+# p <- plotCounts(dds,
+#   gene = which.min(res$padj),
+#   intgroup = c("patient_group", "cell_type"),
+#   returnData = TRUE
+# )
+# 
+# ggplot(p, aes(x = patient_group, y = count, color = cell_type)) +
+#   geom_point(position = position_jitter(w = 0.1, h = 0), size = 3) +
+#   scale_y_log10(breaks = c(25, 100, 400)) +
+#   labs(title = which.min(res$padj))
+```
+
+
+## Volcano Plots
+```{r}
+EnhancedVolcano(resLFC,
+  lab = rownames(resLFC),
+  x = "log2FoldChange",
+  y = "pvalue",
+  title = "Smoker vs Non-smoker",
+  pCutoff = 1e-05,
+  FCcutoff = 1,
+  pointSize = 2,
+  labSize = 4,
+  legendPosition = 'right',
+  legendLabSize = 10,
+  legendIconSize = 3.0,
+  max.overlaps = 20
+)
+
+resLFC_DF <- as.data.frame(resLFC) |>
+  rownames_to_column("GeneID")
+
+resLFC_DF <- resLFC_DF |>
+  mutate(`-log10(pvalue)` = -log10(pvalue))
+
+ggplot(resLFC_DF, aes(x = log2FoldChange, y = `-log10(pvalue)`)) +
+  geom_point(aes(colour = padj < 0.05), size = 1) +
+  geom_text(data = ~ top_n(.x, 5, wt = -padj), aes(label = GeneID)) +
+  labs(title = "Smoker vs NonSmoker")
+```
