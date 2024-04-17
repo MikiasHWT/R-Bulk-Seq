@@ -17,7 +17,7 @@ Purpose : Comparison of RNA expression of three innate immune cell populations a
 Load libraries
 ```{r results='hide', message=FALSE, warning=FALSE}
 library(prettydoc)
-# library(GEOquery) # import datasets from GEO (unused)
+library(GEOquery) # import datasets from GEO (unused)
 library(DESeq2) # Diverential gene expression analysis
 library(vsn) # Transformation
 library(apeglm) # log fold shrinking (adaptive t prior shrinkage estimator)
@@ -40,6 +40,13 @@ library(AnnotationHub)
 library(ensembldb)
 library(enrichplot)
 library(biomaRt)
+library(ReactomePA)
+library(ggupset)
+library(cowplot)
+library(europepmc)
+library(ggstance)
+library(bigmemory)
+library(bigalgebra)
 # library(GO.db) # Gene ontology
 # library(GOstats) # Gene ontology
 library(tidyverse) # data wrangling & visualization
@@ -53,8 +60,11 @@ conflicts_prefer(dplyr::select)
 
 conflicts_prefer(dplyr::filter)
 
+conflicts_prefer(dplyr::slice)
+
 conflicts_prefer(SparseArray::rowSds)
 
+conflicts_prefer(base::setdiff)
 ```
 
 Define MA Plotting function
@@ -111,6 +121,11 @@ metadata <- read.csv("Data/GSE183973_metadata_samples.csv",
 head(counts)
 
 head(metadata)
+
+# datGse <- getGEO("GSE183973")
+# 
+# head(datGse)
+
 ```
 
 Initially, Two sets of variables are considered for this analysis.  
@@ -713,10 +728,10 @@ EnhancedVolcano(res,
   colAlpha = 0.3
 )
 
-resLFC_DF <- as.data.frame(resLFC) %>%
+resLFC_DF <- as.data.frame(resLFC) |>
   rownames_to_column("GeneID")
 
-resLFC_DF <- resLFC_DF %>%
+resLFC_DF <- resLFC_DF |>
   mutate(`-log10(pvalue)` = -log10(pvalue))
 
 ggplot(resLFC_DF, aes(x = log2FoldChange, y = `-log10(pvalue)`)) +
@@ -767,39 +782,136 @@ resOrdered05
 
 #Venn Diagram
 ```{r}
-vennTest <- tibble(Geneid = rownames(res)) %>%
-  mutate(NonSmokerVSSmoker = res$padj < 0.05 &
-    !is.na(res$padj) &
-    res$log2FoldChange > 0) %>%
-  mutate(Smoker = res$padj < 0.05 &
-    !is.na(res$padj) &
-    res$log2FoldChange < 0) %>%
-  mutate(NonSmokerVSCOPD = resCOPD$padj < 0.05 &
-    !is.na(resCOPD$padj) &
-    resCOPD$log2FoldChange > 0) %>%
-  mutate(COPD = resCOPD$padj < 0.05 &
-    !is.na(resCOPD$padj) &
-    resCOPD$log2FoldChange < 0)
-
-ggvenn(vennTest, set_name_size = 4)
+# vennTest <- tibble(Geneid = rownames(res)) |>
+#   mutate(NonSmokerVSSmoker = res$padj < 0.05 &
+#     !is.na(res$padj) &
+#     res$log2FoldChange > 0) |>
+#   mutate(Smoker = res$padj < 0.05 &
+#     !is.na(res$padj) &
+#     res$log2FoldChange < 0) |>
+#   mutate(NonSmokerVSCOPD = resCOPD$padj < 0.05 &
+#     !is.na(resCOPD$padj) &
+#     resCOPD$log2FoldChange > 0) |>
+#   mutate(COPD = resCOPD$padj < 0.05 &
+#     !is.na(resCOPD$padj) &
+#     resCOPD$log2FoldChange < 0)
+# 
+# ggvenn(vennTest, set_name_size = 4)
+# 
+# vennTest <- tibble(Geneid = rownames(res)) |>
+#   mutate(Smoker = res$padj < 0.05 &
+#     !is.na(res$padj) &
+#     res$log2FoldChange > 0) |>
+#   mutate(NonSmoker = res$padj < 0.05 &
+#     !is.na(res$padj) &
+#     res$log2FoldChange < 0)
+# 
+# ggvenn(vennTest, set_name_size = 4)
 ```
 
 # Next Analysis: Enrichment/Over-representation analysis 
 https://yulab-smu.top/biomedical-knowledge-mining-book/index.html
 
 file:///C:/Users/Owner/Downloads/RNASEQ20_Day3_HandsOn.pdf
-
+## ORA & Enrichment
 ```{r}
 # Create background dataset for hypergeometric testing using all genes tested for significance in the results
 all_genes <- as.character(rownames(res))
 
-# Extract significant results
+all_genesCOPD <- as.character(rownames(resCOPD))
+
+all_genesWILD <- as.character(rownames(resWild))
+
+all_genes <- as.character(rownames(res))# Extract significant results
+
+# Extract significant genes
+
 signif_res <- res[res$padj < 0.05 & !is.na(res$padj), ]
+
+signif_resCOPD <- resCOPD[resCOPD$padj < 0.05 & !is.na(resCOPD$padj), ]
+
+signif_resWild <- resWild[resWild$padj < 0.05 & !is.na(resWild$padj), ]
 
 signif_genes <- as.character(rownames(signif_res))
 
+# Setup ranked genelist
+geneSet <- as.data.frame(signif_res)
+
+geneSetCOPD <- as.data.frame(signif_resCOPD)
+
+geneSetWild <- as.data.frame(signif_resWild)
+
+geneSetmin <- geneSet %>%
+  select(log2FoldChange) %>%
+  arrange(desc(log2FoldChange)) %>%
+  mutate(SYMBOL = row.names(.)) %>%
+  select(SYMBOL, everything())
+
+geneSetminCOPD <- geneSetCOPD %>%
+  select(log2FoldChange) %>%
+  arrange(desc(log2FoldChange)) %>%
+  mutate(SYMBOL = row.names(.)) %>%
+  select(SYMBOL, everything())
+
+geneSetminWild <- geneSetWild %>%
+  select(log2FoldChange) %>%
+  arrange(desc(log2FoldChange)) %>%
+  mutate(SYMBOL = row.names(.)) %>%
+  select(SYMBOL, everything())
+
+# Determine invalid SYMBOL names and remove
+
+valid_symbols <- keys(org.Hs.eg.db, keytype = "SYMBOL")
+
+invalid_genes <- setdiff(geneSetmin$SYMBOL, valid_symbols)
+
+print(invalid_genes)
+
+geneSetmin <- geneSetmin |> 
+  filter(SYMBOL %in% valid_symbols)
+
+geneSetminCOPD <- geneSetminCOPD |> 
+  filter(SYMBOL %in% valid_symbols)
+
+geneSetminWild <- geneSetminWild |> 
+  filter(SYMBOL %in% valid_symbols)
+
+# Translate gene Symbol to Entrez ID
+geneSetmin2 = bitr(geneSetmin$SYMBOL, 
+                  fromType="SYMBOL", 
+                  toType="ENTREZID", 
+                  OrgDb="org.Hs.eg.db")
+
+geneSetminCOPD2 = bitr(geneSetminCOPD$SYMBOL, 
+                  fromType="SYMBOL", 
+                  toType="ENTREZID", 
+                  OrgDb="org.Hs.eg.db")
+
+geneSetmin2WILD2 = bitr(geneSetminWild$SYMBOL, 
+                  fromType="SYMBOL", 
+                  toType="ENTREZID", 
+                  OrgDb="org.Hs.eg.db")
+
+geneSetFinal <- geneSetmin |> 
+  full_join(geneSetmin2, by = "SYMBOL") |> 
+  select(SYMBOL, ENTREZID, log2FoldChange)
+
+geneSetFinalCOPD <- geneSetminCOPD |> 
+  full_join(geneSetminCOPD2, by = "SYMBOL") |> 
+  select(SYMBOL, ENTREZID, log2FoldChange)
+
+geneSetFinalWild <- geneSetminWild |> 
+  full_join(geneSetmin2WILD2, by = "SYMBOL") |> 
+  select(SYMBOL, ENTREZID, log2FoldChange)
+
+# write.csv(geneSetFinal, file="SmokervsNon_GeneSet.csv")
+
+```
+
+
+```{r}
 # Run GO enrichment analysis
-ego <- enrichGO(
+egoBP <- enrichGO(
   gene = signif_genes,
   universe = all_genes,
   keyType = "SYMBOL",
@@ -809,25 +921,77 @@ ego <- enrichGO(
   qvalueCutoff = 0.05,
   readable = TRUE
 )
+
+head(egoBP)
+
+egoCC <- enrichGO(
+  gene = signif_genes,
+  universe = all_genes,
+  keyType = "SYMBOL",
+  OrgDb = org.Hs.eg.db,
+  ont = "CC",
+  pAdjustMethod = "BH",
+  qvalueCutoff = 0.05,
+  readable = TRUE
+)
+
+head(egoCC)
+
+egoMF <- enrichGO(
+  gene = signif_genes,
+  universe = all_genes,
+  keyType = "SYMBOL",
+  OrgDb = org.Hs.eg.db,
+  ont = "MF",
+  pAdjustMethod = "BH",
+  qvalueCutoff = 0.05,
+  readable = TRUE
+)
+
+head(egoMF)
+
+
 # Output results from GO analysis to a table
-cluster_summary <- data.frame(ego)
+clusterBP_summary <- data.frame(egoBP)
+
+clusterCC_summary <- data.frame(egoCC)
+
+clusterMF_summary <- data.frame(egoMF)
+
 
 # Visualize
-dotplot(ego, showCategory = 50)
+dotplot(egoBP, showCategory = 12)
+
+goplot(egoBP)
+
+# dotplot(egoCC, showCategory = 12) # no results for Cellular Component
+
+# goplot(egoCC)
+
+dotplot(egoMF, showCategory = 12)
+
+goplot(egoMF)
 
 # # Plot enrichment map
 # emapplot(ego, showCategory = 50)
-# 
+#
 # # Calculate term similarity matrix
 # sim_matrix <- pairwise_termsim(ego)
-# 
+#
 # # Plot enrichment map
 # emapplot(ego, showCategory = 50, sim_matrix = sim_matrix)
 
 # To color genes by log2 fold changes
 signif_res_lFC <- signif_res$log2FoldChange
 
-cnetplot(ego,
+cnetplot(egoBP,
+  categorySize = "pvalue",
+  showCategory = 5,
+  foldChange = signif_res_lFC,
+  vertex.label.font = 6
+)
+
+cnetplot(egoMF,
   categorySize = "pvalue",
   showCategory = 5,
   foldChange = signif_res_lFC,
@@ -835,40 +999,705 @@ cnetplot(ego,
 )
 ```
 
+# Practice Datasets
+## GO over-representation analysis
+```{r}
+data(geneList, package = "DOSE")
+gene <- names(geneList)[abs(geneList) > 2]
+
+# Entrez gene ID
+head(gene)
+
+# GroupGO
+ggo <- groupGO(
+  gene = signif_genes,
+  OrgDb = org.Hs.eg.db,
+  keyType = "SYMBOL",
+  ont = "CC",
+  level = 3,
+  readable = TRUE
+)
+
+head(ggo)
+
+# # EnrichGO
+# ego <- enrichGO(gene          = gene,
+#                 universe      = names(geneList),
+#                 OrgDb         = org.Hs.eg.db,
+#                 ont           = "CC",
+#                 pAdjustMethod = "BH",
+#                 pvalueCutoff  = 0.01,
+#                 qvalueCutoff  = 0.05,
+#         readable      = TRUE)
+#
+# head(ego)
+#
+# goplot(ego)
+#
+# gene.df <- bitr(gene, fromType = "ENTREZID",
+#         toType = c("ENSEMBL", "SYMBOL"),
+#         OrgDb = org.Hs.eg.db)
+#
+# ego2 <- enrichGO(gene         = gene.df$ENSEMBL,
+#                 OrgDb         = org.Hs.eg.db,
+#                 keyType       = 'ENSEMBL',
+#                 ont           = "CC",
+#                 pAdjustMethod = "BH",
+#                 pvalueCutoff  = 0.01,
+#                 qvalueCutoff  = 0.05)
+#
+# head(ego2, 3)
+#
+# goplot(ego2)
+
+# Gene IDs can be mapped to gene Symbols by using the parameter readable=TRUE or setReadable() function.
+```
+
+## GO Gene Set Enrichment Analysis
+```{r}
+ego3 <- gseGO(
+  geneList = geneList,
+  OrgDb = org.Hs.eg.db,
+  ont = "CC",
+  minGSSize = 100,
+  maxGSSize = 500,
+  pvalueCutoff = 0.05,
+  verbose = FALSE
+)
+
+
+goplot(ego3)
+```
+
+## KEGG enrichment analysis
+```{r}
+search_kegg_organism("ece", by = "kegg_code")
+
+ecoli <- search_kegg_organism("Escherichia coli", by = "scientific_name")
+
+dim(ecoli)
+
+head(ecoli)
+
+# KEGG pathway over-representation analysis
+data(geneList, package = "DOSE")
+
+gene <- names(geneList)[abs(geneList) > 2]
+
+kk <- enrichKEGG(
+  gene = gene,
+  organism = "hsa",
+  pvalueCutoff = 0.05
+)
+head(kk)
+
+# KEGG pathway gene set enrichment analysis
+kk2 <- gseKEGG(
+  geneList = geneList,
+  organism = "hsa",
+  minGSSize = 120,
+  pvalueCutoff = 0.05,
+  verbose = FALSE
+)
+head(kk2)
+
+# KEGG module over-representation analysis
+mkk <- enrichMKEGG(
+  gene = gene,
+  organism = "hsa",
+  pvalueCutoff = 1,
+  qvalueCutoff = 1
+)
+head(mkk)
+
+# KEGG module gene set enrichment analysis
+mkk2 <- gseMKEGG(
+  geneList = geneList,
+  organism = "hsa",
+  pvalueCutoff = 1
+)
+head(mkk2)
+```
+
+
+## Visualize & Exporting enriched KEGG pathways
+```{r}
+# # Opens interactive web browser
+# browseKEGG(kk, 'hsa04110')
+
+# # Output pathway PNG's
+# hsa04110 <- pathview(gene.data  = geneList,
+#                      pathway.id = "hsa04110",
+#                      species    = "hsa",
+#                      limit      = list(gene=max(abs(geneList)), cpd=1))
+```
+
+## Reactome enrichment analysis
+The input gene ID should be Entrez gene ID. Use clusterProfiler::bitr() to convert biological IDs.
+```{r}
+# Reactome pathway over-representation analysis
+data(geneList, package = "DOSE")
+
+de <- names(geneList)[abs(geneList) > 1.5]
+
+head(de)
+
+x <- enrichPathway(gene = de, pvalueCutoff = 0.05, readable = TRUE)
+
+head(x)
+
+# Reactome pathway gene set enrichment analysis
+y <- gsePathway(geneList,
+  pvalueCutoff = 0.2,
+  pAdjustMethod = "BH",
+  verbose = FALSE
+)
+head(y)
+
+# Pathway Visualization
+
+viewPathway("E2F mediated regulation of DNA replication",
+  readable = TRUE,
+  foldChange = geneList
+)
+```
+
+## Disease enrichment analysis 
+```{r}
+# Over-representation analysis for disease ontology
+data(geneList)
+
+gene <- names(geneList)[abs(geneList) > 1.5]
+
+head(gene)
+
+x <- enrichDO(
+  gene = gene,
+  ont = "DO",
+  pvalueCutoff = 0.05,
+  pAdjustMethod = "BH",
+  universe = names(geneList),
+  minGSSize = 5,
+  maxGSSize = 500,
+  qvalueCutoff = 0.05,
+  readable = FALSE
+)
+head(x)
+```
+
+
+## Biological theme comparison
+```{r}
+# Comparing multiple gene lists
+data(gcSample)
+
+str(gcSample)
+
+column_list <- list(pull(geneSetFinal, ENTREZID),
+                    pull(geneSetFinalCOPD, ENTREZID),
+                    pull(geneSetFinalWild, ENTREZID))
+
+column_list2 <- list(geneSetFinal$ENTREZID, 
+                     geneSetFinalCOPD$ENTREZID)
+
+column_list2[["Smoker vs Healthy"]] <- column_list2[[1]]
+
+column_list2[["COPD vs Healthy"]] <- column_list2[[2]]
+
+column_list2 = column_list2[3:4]
+
+ck <- compareCluster(geneCluster = column_list2, fun = enrichKEGG)
+
+ck <- setReadable(ck, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+
+head(ck)
+
+# Visualization of functional profile comparison
+dotplot(ck)
+
+# Gene-Concept Network
+cnetplot(ck)
+```
+## Formula interface of compareCluster
+```{r}
+
+# Formula interface of compareCluster
+# compareCluster() function also supports passing a formula to describe more complicated experimental designs
+mydf <- data.frame(Entrez = geneSetFinal$ENTREZID, FC = geneSetFinal$log2FoldChange)
+
+mydf <- mydf[abs(mydf$FC) > 1, ]
+
+mydf$group <- "upregulated"
+
+mydf$group[mydf$FC < 0] <- "downregulated"
+
+mydf$othergroup <- "One Fold"
+
+mydf$othergroup[abs(mydf$FC) > 2] <- "Two Fold"
+
+formula_res <- compareCluster(Entrez ~ group + othergroup,
+  data = mydf,
+  fun = "enrichKEGG"
+)
+
+head(formula_res)
+
+# Visualization of functional profile comparison
+
+dotplot(formula_res)
+
+dotplot(formula_res, x = "group") +
+  facet_grid(~othergroup)
+
+# Gene-Concept Network
+cnetplot(formula_res)
+
+```
+
+## Visualization of functional enrichment result
+```{r}
+
+data(geneList)
+
+geneSet
+
+de <- names(geneList)[abs(geneList) > 2]
+
+
+de2 <- geneSetFinal |> 
+  select(ENTREZID, log2FoldChange) |> 
+  filter(abs(log2FoldChange) > 2)
+
+de <- as.character(de$ENTREZID)
+
+```
+
+## Bar Plot
+```{r}
+# Bar Plot
+
+edo <- enrichDGN(de)
+
+barplot(edo, showCategory = 20)
+
+mutate(edo, qscore = -log(p.adjust, base = 10)) |>
+  barplot(x = "qscore")
+
+```
+
+## Dot plot
+```{r}
+
+rownames(de2) <- de2$ENTREZID
+
+
+de3 <- de2 |> 
+  select(-ENTREZID)
+
+de3 <- de3 |> 
+  mutate(x = log2FoldChange) |> 
+  select(-log2FoldChange)
+
+
+class(geneList)
+
+head(geneList)
+
+class(geneListNew)
+
+head(geneListNew)
+
+geneListNew <- as.numeric(unlist(de2))
+
+class(large_numeric_matrix)
+
+nameVector <- de2$ENTREZID
+
+combined <- as.numeric(de2$ENTREZID, de2$log2FoldChange)
+
+
+class(combined)
+
+# Dot plot
+edo2 <- gseDO(combined)
+
+dotplot(edo, showCategory = 30) +
+  ggtitle("dotplot for ORA")
+
+dotplot(edo2, showCategory = 30) +
+  ggtitle("dotplot for GSEA")
+
+# Gene-Concept Network
+
+## convert gene ID to Symbol
+edox <- setReadable(edo, "org.Hs.eg.db", "ENTREZID")
+
+p1 <- cnetplot(edox, foldChange = geneList)
+
+## categorySize can be scaled by 'pvalue' or 'geneNum'
+p2 <- cnetplot(edox, categorySize = "pvalue", foldChange = geneList)
+
+p3 <- cnetplot(edox, foldChange = geneList, circular = TRUE, colorEdge = TRUE)
+
+cowplot::plot_grid(p1, p2, p3,
+  ncol = 3,
+  labels = LETTERS[1:3],
+  rel_widths = c(.8, .8, 1.2)
+)
+
+## Labelling nodes by selected subset.
+p1 <- cnetplot(edox,
+  node_label = "category",
+  cex_label_category = 1.2
+)
+
+p2 <- cnetplot(edox,
+  node_label = "gene",
+  cex_label_gene = 0.8
+)
+
+p3 <- cnetplot(edox, node_label = "all")
+
+p4 <- cnetplot(edox,
+  node_label = "none",
+  color_category = "firebrick",
+  color_gene = "steelblue"
+)
+
+cowplot::plot_grid(p1, p2, p3, p4, ncol = 2, labels = LETTERS[1:4])
+
+##  Using cnetplot to visualize data relationships
+set.seed(123)
+
+x <- list(A = letters[1:10], B = letters[5:12], C = letters[sample(1:26, 15)])
+
+p1 <- cnetplot(x)
+
+set.seed(123)
+
+d <- setNames(rnorm(26), letters)
+
+p2 <- cnetplot(x, foldChange = d) +
+  scale_color_gradient2(name = "associated data", low = "darkgreen", high = "firebrick")
+
+cowplot::plot_grid(p1, p2, ncol = 2, labels = LETTERS[1:2])
+
+# Heatmap-like functional classification
+p1 <- heatplot(edox, showCategory = 5)
+
+p2 <- heatplot(edox, foldChange = geneList, showCategory = 5)
+
+cowplot::plot_grid(p1, p2, ncol = 1, labels = LETTERS[1:2])
+
+
+# Tree plot
+edox2 <- pairwise_termsim(edox)
+
+p1 <- treeplot(edox2)
+
+p2 <- treeplot(edox2, hclust_method = "average")
+
+aplot::plot_list(p1, p2, tag_levels = "A")
+
+# Enrichment Map
+edo <- pairwise_termsim(edo)
+
+p1 <- emapplot(edo)
+
+p2 <- emapplot(edo, cex_category = 1.5)
+
+p3 <- emapplot(edo, layout = "kk")
+
+p4 <- emapplot(edo, cex_category = 1.5, layout = "kk")
+
+cowplot::plot_grid(p1, p2, p3, p4, ncol = 2, labels = LETTERS[1:4])
+
+# Biological theme comparison
+data(gcSample)
+
+xx <- compareCluster(gcSample,
+  fun = "enrichKEGG",
+  organism = "hsa", pvalueCutoff = 0.05
+)
+
+xx <- pairwise_termsim(xx)
+
+p1 <- emapplot(xx)
+
+p2 <- emapplot(xx, legend_n = 2)
+
+p3 <- emapplot(xx, pie = "count")
+
+p4 <- emapplot(xx, pie = "count", cex_category = 1.5, layout = "kk")
+
+cowplot::plot_grid(p1, p2, p3, p4, ncol = 2, labels = LETTERS[1:4])
+
+# UpSet Plot
+# For over-representation analysis, upsetplot will calculate the overlaps among different gene sets
+upsetplot(edo)
+
+# For GSEA result, it will plot the fold change distributions of different categories (e.g. unique to pathway, overlaps among different pathways).
+upsetplot(kk2)
+
+# ridgeline plot for expression distribution of GSEA result
+ridgeplot(edo2)
+
+# running score and preranked list of GSEA result
+# gseaplot for GSEA result(by = "runningScore")
+p1 <- gseaplot(edo2,
+  geneSetID = 1,
+  by = "runningScore",
+  title = edo2$Description[1]
+)
+
+p2 <- gseaplot(edo2,
+  geneSetID = 1,
+  by = "preranked",
+  title = edo2$Description[1]
+)
+
+p3 <- gseaplot(edo2,
+  geneSetID = 1,
+  title = edo2$Description[1]
+)
+
+cowplot::plot_grid(p1, p2, p3, ncol = 1, labels = LETTERS[1:3])
+
+# Gseaplot2 for GSEA result.
+gseaplot2(edo2, geneSetID = 1, title = edo2$Description[1])
+
+# Gseaplot2 for GSEA result of multile gene sets.
+gseaplot2(edo2, geneSetID = 1:3)
+
+# Gseaplot2 for GSEA result of multile gene sets(add pvalue_table)
+gseaplot2(edo2,
+  geneSetID = 1:3, pvalue_table = TRUE,
+  color = c("#E495A5", "#86B875", "#7DB0DD"), ES_geom = "dot"
+)
+
+# Gseaplot2 for GSEA result of multile gene sets(add subplots)
+p1 <- gseaplot2(edo2, geneSetID = 1:3, subplots = 1)
+
+p2 <- gseaplot2(edo2, geneSetID = 1:3, subplots = 1:2)
+
+cowplot::plot_grid(p1, p2, ncol = 1, labels = LETTERS[1:2])
+
+# Ranked list of genes belong to the specific gene set.
+gsearank(edo2, 1, title = edo2[1, "Description"])
+
+# Gsearank for multiple gene sets
+pp <- lapply(1:3, function(i) {
+  anno <- edo2[i, c("NES", "pvalue", "p.adjust")]
+  lab <- paste0(names(anno), "=", round(anno, 3), collapse = "\n")
+
+  gsearank(edo2, i, edo2[i, 2]) + xlab(NULL) + ylab(NULL) +
+    annotate("text", 10000, edo2[i, "enrichmentScore"] * .75, label = lab, hjust = 0, vjust = 0)
+})
+
+plot_grid(plotlist = pp, ncol = 1)
+
+# pubmed trend of enriched terms
+terms <- edo$Description[1:5]
+
+p <- pmcplot(terms, 2010:2024)
+
+p2 <- pmcplot(terms, 2010:2024, proportion = FALSE)
+
+plot_grid(p, p2, ncol = 2)
+```
+
+
+
+## Manipulating enrichment result
+```{r}
+data(geneList)
+
+de <- names(geneList)[1:100]
+
+x <- enrichDO(de)
+
+# Filter
+filter(x, p.adjust < .05, qvalue < 0.2)
+
+# Arrange
+mutate(x,
+  geneRatio = parse_ratio(GeneRatio)
+) |>
+  arrange(desc(geneRatio))
+
+# Select
+select(x, -geneID) |> head()
+
+# Mutate
+# k/M
+y <- mutate(x,
+  richFactor = Count / as.numeric(sub("/\\d+", "", BgRatio))
+)
+
+y
+
+# Visualizing rich factor of enriched terms using lolliplot.
+ggplot(y,
+  showCategory = 20,
+  aes(richFactor, fct_reorder(Description, richFactor))
+) +
+  geom_segment(aes(xend = 0, yend = Description)) +
+  geom_point(aes(color = p.adjust, size = Count)) +
+  scale_color_viridis_c(guide = guide_colorbar(reverse = TRUE)) +
+  scale_size_continuous(range = c(2, 10)) +
+  theme_minimal() +
+  xlab("rich factor") +
+  ylab(NULL) +
+  ggtitle("Enriched Disease Ontology")
+
+# Slice
+x <- gsePathway(geneList)
+
+y <- arrange(x, abs(NES)) |>
+  group_by(.add = sign(NES)) |>
+  slice(1:5)
+
+y <- arrange(x, abs(NES)) |>
+  group_by(sign(NES)) |>
+  slice(1:5)
+
+# ggplot(y, aes(NES, fct_reorder(Description, NES), fill = qvalues),
+#   showCategory = 10
+# ) +
+#   geom_col(orientation = "y") +
+#   scale_fill_continuous(
+#     low = "red", high = "blue",
+#     guide = guide_colorbar(reverse = TRUE)
+#   ) +
+#   theme_minimal() +
+#   ylab(NULL)
+
+# Summarise
+pbar <- function(x) {
+  pi=seq(0, 1, length.out=11)
+
+  mutate(x, pp = cut(p.adjust, pi)) %>%
+    group_by(pp) %>% 
+    summarise(cnt = n()) %>% 
+    ggplot(aes(pp, cnt)) + geom_col() + 
+    theme_minimal() +
+    xlab("p value intervals") +
+    ylab("Frequency") + 
+    ggtitle("p value distribution")
+}    
+
+x <- enrichDO(de, pvalueCutoff=1, qvalueCutoff=1)
+
+set.seed(2020-09-10)
+
+random_genes <- sample(names(geneList), 100)
+
+y <- enrichDO(random_genes, pvalueCutoff=1, qvalueCutoff=1)
+
+p1 <- pbar(x)
+p2 <- pbar(y)
+
+cowplot::plot_grid(p1, p2, ncol=1, labels = LETTERS[1:2])
+
+```
+
+
+### Prepare geneList
+
+GSEA analysis requires a ranked gene list, which contains three features:
+
+    - numeric vector: fold change or other type of numerical variable
+    - named vector: every number has a name, the corresponding gene ID
+    - sorted vector: number should be sorted in decreasing order
+
+If you import your data from a csv file, the file should contains two columns, one for gene ID (no duplicated ID allowed) and another one for fold change. You can prepare your own geneList via the following command:
+```{r eval=FALSE, include=FALSE}
+d = read.csv(your_csv_file)
+## assume 1st column is ID
+## 2nd column is FC
+
+## feature 1: numeric vector
+geneList = d[,2]
+
+## feature 2: named vector
+names(geneList) = as.character(d[,1])
+
+## feature 3: decreasing orde
+geneList = sort(geneList, decreasing = TRUE)
+```
+
+### Showing specific pathways
+```{r}
+data(geneList)
+de <- names(geneList)[1:100]
+
+x <- enrichDO(de)
+
+## show top 10 most significant pathways and want to exclude the second one
+## dotplot(x, showCategory = x$Description[1:10][-2])
+
+set.seed(123)
+selected_pathways <- sample(x$Description, 10)
+selected_pathways
+
+p1 <- dotplot(x, showCategory = 10, font.size=14)
+p2 <- dotplot(x, showCategory = selected_pathways, font.size=14)
+
+
+cowplot::plot_grid(p1, p2, labels=LETTERS[1:2])
+
+# extract genes of a specific term/pathway
+id <- x$ID[1:3]
+id
+
+x[[id[1]]]
+
+geneInCategory(x)[id]
+
+# Wrap long axis labels
+y <- enrichPathway(de)
+
+p1 <- dotplot(y, label_format = 20) 
+
+p2 <- dotplot(y, label_format = function(x) stringr::str_wrap(x, width=20))
+
+cowplot::plot_grid(p1, p2, ncol=2, labels=c("A", "B")) 
+
+```
 
 ```{r}
 # # Gene set enrichment analysis (GSEA) using clusterProfiler and Pathview
 # mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
-# 
-# mart <- useEnsembl(biomart = "ensembl", 
+#
+# mart <- useEnsembl(biomart = "ensembl",
 #                      dataset = "hsapiens_gene_ensembl")
-# 
+#
 # genes <- getBM(
 #   filters = "chromosome_name",
 #   attributes = "ensembl_gene_id",
 #   values = all_genes,
 #   mart = mart
 # )
-# 
-# 
+#
+#
 # indNA <- which(is.na(genes$entrezgene_id))
-# 
+#
 # genes_noNA <- genes[-indNA, ]
-# 
+#
 # indnodup <- which(duplicated(genes_noNA$ entrezgene_id) == F)
-# 
+#
 # genes_noNA_nodup <- genes_noNA[indnodup, ]
-# 
+#
 # lFC <- res$log2FoldChange[-indNA]
-# 
+#
 # lFC <- lFC[indnodup]
-# 
+#
 # names(lFC) <- genes_noNA_nodup$entrezgene_id
-# 
+#
 # # Sort fold changes in decreasing order
 # lFC <- sort(lFC, decreasing = TRUE)
-# 
-# 
+#
+#
 # # Perform the GSEA using KEGG gene sets:
 # gseaKEGG <- gseKEGG(
 #   geneList = lFC,
@@ -878,10 +1707,9 @@ cnetplot(ego,
 #   pvalueCutoff = 0.1, # padj cutoff value
 #   verbose = FALSE
 # )
-# 
+#
 # # Extract the GSEA results
 # gseaKEGG_results <- gseaKEGG@result
-
 ```
 
 
