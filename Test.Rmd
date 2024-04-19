@@ -117,3 +117,96 @@ head(metadata)
 
 
 ```
+
+
+```{r}
+
+library(DESeq2)
+
+# Remove genes column (gene names retained as index)
+# Assign to new df to retain genes column for later data exploration
+geneCounts <- counts |>
+  select(-genes)
+
+
+# Match counts column names and metadata row names
+desired_order <- metadata$samples
+
+geneCounts <- geneCounts[, desired_order]
+
+# Confirm match
+all(colnames(geneCounts) %in% metadata$samples)
+
+all(colnames(geneCounts) == metadata$samples)
+
+
+# Set conditions variables as factors
+metadata$patient_group <- factor(metadata$patient_group)
+
+metadata$cell_type <- factor(metadata$cell_type)
+
+# Define missing column names
+colnames(counts)[1] <- "genes"
+
+row.names(counts) <- counts$genes
+
+colnames(metadata)[1] <- "samples"
+
+
+# Define design matrix for DESeq2
+dds <- DESeqDataSetFromMatrix(
+  countData = geneCounts,
+  colData = metadata,
+  design = ~ cell_type + patient_group
+)
+
+
+
+# Perform data normalization and estimation of size factors
+dds <- DESeq(dds)
+
+
+dds
+
+# lists the contracts
+resultsNames(dds)
+
+# Define contrasts
+contrasts <- list(
+  "patient_group_smoker_vs_non_smoker" = c(0, 1, 0, 0, 0, 0),
+  "PatientGroup_copd_vs_non_smoker"    = c(0, 0, 1, 0, 0, 0),
+  "cell_type_mreg_vs_ma"               = c(0, 0, 0, 1, 0, 0),
+  "cell_type_mono_vs_ma"               = c(0, 0, 0, 0, 1, 0)
+)
+
+# Get all the contrasts
+contrasts <- results(dds, contrast=c("cell_type_mono_vs_ma",
+                                      "cell_type_mreg_vs_ma",
+                                      "patient_group_copd_vs_non_smoker",
+                                      "patient_group_smoker_vs_non_smoker"))
+
+# View the contrasts
+print(contrasts)
+
+
+# Define the contrasts
+contrasts <- c(
+  "cell_type" = c("mono", "ma"),
+  "cell_type" = c("mreg", "ma"),
+  "patient_group" = c("copd", "non_smoker"),
+  "patient_group" = c("smoker", "non_smoker")
+)
+
+# Get all the contrasts
+results <- lapply(contrasts, function(contrast) {
+  results(dds, contrast = contrast)
+})
+
+# View the contrasts
+for (i in seq_along(contrasts)) {
+  cat("Contrast:", names(contrasts)[i], "\n")
+  print(results[[i]])
+  cat("\n")
+}
+
+```
