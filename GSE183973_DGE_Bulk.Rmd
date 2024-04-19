@@ -132,6 +132,32 @@ colnames(metadata)[1] <- "samples"
 geneCounts <- counts |>
   select(-genes)
 
+####################################################################
+
+# Remove COPD Patients and Monocyte cells. 
+metadataSub <- metadata |> 
+  filter(cell_type != "mono" & patient_group != "copd")
+
+countsSub <- counts |> 
+  select(-contains("mono"), -contains("copd"))
+
+geneCountsSub <- countsSub |>
+  select(-genes)
+
+
+# Match counts column names and metadata row names
+desired_order <- metadataSub$samples
+
+geneCountsSub <- geneCountsSub[, desired_order]
+
+# Confirm match
+all(colnames(geneCountsSub) %in% metadataSub$samples)
+
+all(colnames(geneCountsSub) == metadataSub$samples)
+
+####################################################################
+
+
 # Match counts column names and metadata row names
 desired_order <- metadata$samples
 
@@ -141,6 +167,111 @@ geneCounts <- geneCounts[, desired_order]
 all(colnames(geneCounts) %in% metadata$samples)
 
 all(colnames(geneCounts) == metadata$samples)
+```
+
+
+```{r}
+
+# Define design matrix for DESeq2
+ddsSub <- DESeqDataSetFromMatrix(
+  countData = geneCountsSub,
+  colData = metadataSub,
+  design = ~ cell_type + patient_group
+)
+
+# normalization by estimating size factor
+ddsSub <- estimateSizeFactors(ddsSub)
+
+# remove low expressed genes
+keep <- rowSums(counts(ddsSub)) >= 10
+
+ddsSub <- ddsSub[keep, ]
+
+# set factor level (reference group) : Im interested in comparing copd and smokers to the reference group non-smokers in this case.
+ddsSub$patient_group <- relevel(ddsSub$patient_group, ref = "non_smoker")
+
+# Run DEG analysis
+ddsSub <- DESeq(ddsSub)
+
+ddsSub
+
+# lists the contracts
+resultsNames(ddsSub)
+
+
+# defaul results with padj = 0.1
+resSub <- results(ddsSub)
+
+summary(resSub)
+
+# Set a more strict FDR cutoff
+sum(resSub$padj < 0.05, na.rm = TRUE)
+
+# View P-Value histograms for Smoker vs Non-Smoker
+hist(resSub$pvalue)
+
+qobj <- qvalue(resSub$pvalue)
+
+summary(qobj)
+
+hist(qobj)
+
+plot(qobj)
+
+
+
+# Adaptive shrinkage estimator
+resSubLFC <- lfcShrink(ddsSub,
+  coef = "patient_group_smoker_vs_non_smoker",
+  type = "apeglm"
+)
+
+
+plotMA(resSubLFC)
+
+# Plot the gene with the smallest p adj value across specified groupings
+c1 <- plotCounts(ddsSub, gene = which.min(resSub$padj), intgroup = c("cell_type", "patient_group"), returnData = TRUE)
+
+ggplot(c1, aes(x = cell_type, y = count, color = patient_group)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0), size = 3) +
+  scale_y_log10(breaks = c(25, 100, 400)) +
+  labs(title = "CCL4")
+
+```
+
+```{r fig.height = 8}
+
+EnhancedVolcano(resSubLFC,
+  lab = rownames(resSubLFC),
+  x = "log2FoldChange",
+  y = "pvalue",
+  title = "Smoker vs Non-smoker",
+  pCutoff = 1e-05,
+  FCcutoff = 1,
+  pointSize = 2,
+  labSize = 4,
+  legendPosition = 'right',
+  legendLabSize = 10,
+  legendIconSize = 3.0,
+  max.overlaps = 10,
+  drawConnectors = TRUE,
+  widthConnectors = 1.0,
+  colConnectors = 'black',
+  boxedLabels = TRUE
+)
+
+resSubLFC_DF <- as.data.frame(resSubLFC) |>
+  rownames_to_column("GeneID")
+
+resSubLFC_DF <- resSubLFC_DF |>
+  mutate(`-log10(pvalue)` = -log10(pvalue))
+
+ggplot(resSubLFC_DF, aes(x = log2FoldChange, y = `-log10(pvalue)`)) +
+  geom_point(aes(colour = padj < 0.05), size = 1) +
+  geom_text(data = ~ top_n(.x, 20, wt = -padj), aes(label = GeneID)) +
+  labs(title = "Smoker vs NonSmoker")
+
+
 ```
 
 
