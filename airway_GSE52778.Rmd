@@ -2,11 +2,14 @@
 title: "airway_GSE52778"
 author: "Mikias HW"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  prettydoc::html_pretty:
+    theme: hpstr
+    df_print: paged
 ---
 
-Load Libraries 
-```{r}
+# Load Libraries 
+```{r include=FALSE}
 suppressPackageStartupMessages(library("GEOquery"))
 suppressPackageStartupMessages(library("airway"))
 library(DESeq2)
@@ -16,16 +19,9 @@ library("org.Hs.eg.db")
 library("scater")
 library("scuttle")
 ```
-Extensions to the iSEE package provide support for more context-dependent functionality:
 
-    iSEEde provides additional panels that facilitate the interactive visualization of differential expression results, including the DESeqDataSet extension of SummarizedExperiment implemented in DESeq2.
-    iSEEpathways provides additional panels for the interactive visualization of pathway analysis results.
-    iSEEhub provides functionality to import data sets stored in the Bioconductor ExperimentHub.
-    iSEEhub provides functionality to import data sets from custom sources (local and remote).
-
-
-Geo access
-```{r}
+# Geo access
+```{r eval=FALSE, include=FALSE}
 dir <- system.file("extdata",package="airway")
 
 geofile <- file.path(dir, "GSE52778_series_matrix.txt")
@@ -70,8 +66,8 @@ write.csv(coldata, file="sample_table.csv")
 
 ```
 
-RangedSummarizedExperiment
-```{r}
+# RangedSummarizedExperiment
+```{r include=FALSE}
 data(airway)
 
 airway
@@ -115,9 +111,51 @@ dds <- DESeqDataSet(se, design = ~ cell + dex)
 dds
 ```
 
+# Background
+
+## Title 
+```{r echo=FALSE}
+se@metadata[[1]]@title
+```
+
+## Experiment information 
+```{r echo=FALSE}
+metadata(se)
+```
+
+## Abstract
+    `r se@metadata[[1]]@abstract`
+```{r echo=FALSE}
+se@metadata[[1]]@abstract
+```
+
+## Samples
+```{r echo=FALSE}
+se@colData@rownames
+```
+
+## Number of samples: `r length(se@colData@rownames)`
+```{r echo=FALSE}
+as.data.frame(colData(se))
+```
+
+## Number of Genes: `r length(assays(se)$counts)`
+```{r echo=FALSE}
+head(as.data.frame(assays(se)$counts))
+```
+
+## Genome Information
+```{r echo=FALSE}
+metadata(rowRanges(se))
+```
+
+
+
+
+
 visualize
-```{r}
-iSEE(se)
+```{r eval=FALSE, include=FALSE}
+# iSEE(se)
 ```
 
 # Create DESeq object
@@ -156,23 +194,23 @@ resultsNames(dds)
 
 sum(res$padj < 0.05, na.rm=TRUE)
 
-resLFC <- lfcShrink(dds, type="apeglm")
-
-xlim <- c(1,1e5); ylim <- c(-3,3)
-
-plotMA(resLFC, xlim=xlim, ylim=ylim, main="apeglm")
+# resLFC <- lfcShrink(dds, type="apeglm")
+# 
+# xlim <- c(1,1e5); ylim <- c(-3,3)
+# 
+# plotMA(resLFC, xlim=xlim, ylim=ylim, main="apeglm")
 
 ```
 
 
 Filtering
 ```{r}
-keep <- rowSums(counts(dds)) >= 10
-dds <- dds[keep,]
+# keep <- rowSums(counts(dds)) >= 10
+# dds <- dds[keep,]
 ```
 
 Factors
 ```{r}
-dds$condition <- relevel(dds$condition, ref = "untreated")
+# dds$condition <- relevel(dds$condition, ref = "untreated")
 ```
 
