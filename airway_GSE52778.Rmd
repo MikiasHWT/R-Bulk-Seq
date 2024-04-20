@@ -1,0 +1,178 @@
+---
+title: "airway_GSE52778"
+author: "Mikias HW"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+Load Libraries 
+```{r}
+suppressPackageStartupMessages(library("GEOquery"))
+suppressPackageStartupMessages(library("airway"))
+library(DESeq2)
+library(iSEE)
+library(iSEEde)
+library("org.Hs.eg.db")
+library("scater")
+library("scuttle")
+```
+Extensions to the iSEE package provide support for more context-dependent functionality:
+
+    iSEEde provides additional panels that facilitate the interactive visualization of differential expression results, including the DESeqDataSet extension of SummarizedExperiment implemented in DESeq2.
+    iSEEpathways provides additional panels for the interactive visualization of pathway analysis results.
+    iSEEhub provides functionality to import data sets stored in the Bioconductor ExperimentHub.
+    iSEEhub provides functionality to import data sets from custom sources (local and remote).
+
+
+Geo access
+```{r}
+dir <- system.file("extdata",package="airway")
+
+geofile <- file.path(dir, "GSE52778_series_matrix.txt")
+
+gse <- getGEO(filename=geofile)
+
+pdata <- pData(gse)[,grepl("ch1",names(pData(gse)))]
+
+names(pdata) <- c("treatment","tissue","ercc_mix","cell","celltype")
+
+pdataclean <- data.frame(treatment=sub("treatment: (.*)","\\1",pdata$treatment),
+                         cell=sub("cell line: (.*)","\\1",pdata$cell),
+                         row.names=rownames(pdata))
+
+pdataclean$dex <- ifelse(grepl("Dex",pdataclean$treatment),"trt","untrt")
+
+pdataclean$albut <- ifelse(grepl("Albut",pdataclean$treatment),"trt","untrt")
+
+pdataclean$SampleName <- rownames(pdataclean)
+
+pdataclean$treatment <- NULL
+
+
+srafile <- file.path(dir, "SraRunInfo_SRP033351.csv")
+
+srp <- read.csv(srafile)
+
+srpsmall <- srp[,c("Run","avgLength","Experiment","Sample","BioSample","SampleName")]
+
+
+coldata <- merge(pdataclean, srpsmall, by="SampleName")
+
+rownames(coldata) <- coldata$Run
+
+coldata <- coldata[coldata$albut == "untrt",]
+
+coldata$albut <- NULL
+
+coldata
+
+write.csv(coldata, file="sample_table.csv")
+
+```
+
+RangedSummarizedExperiment
+```{r}
+data(airway)
+
+airway
+
+se <- airway
+
+se
+
+#extract counts
+counts <- as.data.frame(assays(se)$counts)
+
+#extract metadata
+colData <- as.data.frame(colData(se))
+
+#Count stats
+summary(colSums(assay(se)) / 1e6)
+
+#Introduction
+metadata(se)
+
+#Title
+se@metadata[[1]]@title
+
+#Abstract
+se@metadata[[1]]@abstract
+
+#Sample names
+se@colData@rownames
+
+#Sum of sampes
+length(se@colData@rownames)
+
+#Sum of genes
+length(assays(se)$counts)
+
+#Genome information
+metadata(rowRanges(se))
+
+dds <- DESeqDataSet(se, design = ~ cell + dex)
+
+dds
+```
+
+visualize
+```{r}
+iSEE(se)
+```
+
+# Create DESeq object
+```{r}
+#Ensure matching sample names & order
+all(colnames(counts) %in% row.names(colData))
+
+all(colnames(counts) == row.names(colData))
+
+# Define design matrix for DESeq2
+dds <- DESeqDataSetFromMatrix(
+  countData = counts,
+  colData = colData,
+  design = ~ dex
+)
+
+# normalization by estimating size factor
+dds <- estimateSizeFactors(dds)
+
+# remove low expressed genes
+keep <- rowSums(counts(dds)) >= 10
+
+dds <- dds[keep, ]
+
+# set factor level (reference group) : Im interested in comparing copd and smokers to the reference group non-smokers in this case.
+dds$dex <- relevel(dds$dex, ref = "untrt")
+
+# Run DEG analysis
+dds <- DESeq(dds)
+
+res <- results(dds)
+
+res
+
+resultsNames(dds)
+
+sum(res$padj < 0.05, na.rm=TRUE)
+
+resLFC <- lfcShrink(dds, type="apeglm")
+
+xlim <- c(1,1e5); ylim <- c(-3,3)
+
+plotMA(resLFC, xlim=xlim, ylim=ylim, main="apeglm")
+
+```
+
+
+Filtering
+```{r}
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+```
+
+Factors
+```{r}
+dds$condition <- relevel(dds$condition, ref = "untreated")
+```
+
