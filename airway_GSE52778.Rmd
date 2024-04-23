@@ -18,6 +18,7 @@ library(iSEEde)
 library("org.Hs.eg.db")
 library("scater")
 library("scuttle")
+library(gridExtra)
 ```
 
 # Geo access
@@ -150,15 +151,40 @@ metadata(rowRanges(se))
 ```
 
 
+# Define MA plotting function
+```{r}
+# MA Plots
+# Arranged into 2 rows
+# Color & translucency by DEG
+# Plot titles fed in as arguments
+# Mean counts (x-axis) Log10 transformed
 
+plotMA_arrange_iterative <- function(res_list) {
+  plots <- list()
 
+  for (i in seq_along(res_list)) {
+    result <- res_list[[i]]
+    res_name <- names(res_list)[i] # Get the name of the res object
+    res_sum <- sum(result$padj < 0.05, na.rm=TRUE)
+    p <- plotMA(result, returnData = TRUE) # DESeq2's PlotMA function
+    p_plot <- ggplot(p, aes(x = mean, y = lfc, color = isDE)) +
+      geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) + # Reduce non DEG genes transperancy
+      scale_x_continuous(trans = "log10") + # Scale mean counts
+      ylim(-2, 2) +
+      labs(title = res_name, 
+           subtitle = (gsub(".*\\(MAP\\):\\s*", "",
+                            result@elementMetadata@listData[["description"]][2])), 
+           caption = paste("Total genes:", res_sum)) # Label plots
 
-visualize
-```{r eval=FALSE, include=FALSE}
-# iSEE(se)
+    plots[[i]] <- p_plot
+  }
+
+  do.call(grid.arrange, c(plots, nrow = 3))
+}
 ```
 
-# Create DESeq object
+
+# Dex variable only
 ```{r}
 #Ensure matching sample names & order
 all(colnames(counts) %in% row.names(colData))
@@ -166,48 +192,161 @@ all(colnames(counts) %in% row.names(colData))
 all(colnames(counts) == row.names(colData))
 
 # Define design matrix for DESeq2
-dds <- DESeqDataSetFromMatrix(
+dds1 <- DESeqDataSetFromMatrix(
   countData = counts,
   colData = colData,
   design = ~ dex
 )
 
 # normalization by estimating size factor
-dds <- estimateSizeFactors(dds)
+dds1 <- estimateSizeFactors(dds1)
 
 # remove low expressed genes
-keep <- rowSums(counts(dds)) >= 10
+keep <- rowSums(counts(dds1)) >= 10
 
-dds <- dds[keep, ]
+dds1 <- dds1[keep, ]
 
-# set factor level (reference group) : Im interested in comparing copd and smokers to the reference group non-smokers in this case.
-dds$dex <- relevel(dds$dex, ref = "untrt")
+# set factor level (reference group)
+dds1$dex <- relevel(dds1$dex, ref = "untrt")
 
 # Run DEG analysis
-dds <- DESeq(dds)
+dds1 <- DESeq(dds1)
 
-res <- results(dds)
+res1 <- results(dds1)
 
-res
+res1
 
-resultsNames(dds)
+resultsNames(dds1)
 
-sum(res$padj < 0.05, na.rm=TRUE)
+resSum1 <- sum(res1$padj < 0.05, na.rm=TRUE)
 
-# resLFC <- lfcShrink(dds, type="apeglm")
-# 
+# Log fold shrink
+resLFC1 <- lfcShrink(dds1, coef = "dex_trt_vs_untrt", type="apeglm")
+
 # xlim <- c(1,1e5); ylim <- c(-3,3)
 # 
-# plotMA(resLFC, xlim=xlim, ylim=ylim, main="apeglm")
-
+# plotMA(resLFC1, xlim=xlim, ylim=ylim, main="apeglm")
 ```
 
-
-Filtering
+# Cell variable only
 ```{r}
-# keep <- rowSums(counts(dds)) >= 10
-# dds <- dds[keep,]
+# Define design matrix for DESeq2
+dds0 <- DESeqDataSetFromMatrix(
+  countData = counts,
+  colData = colData,
+  design = ~ cell)
+
+# normalization by estimating size factor
+dds0 <- estimateSizeFactors(dds0)
+
+# remove low expressed genes
+keep <- rowSums(counts(dds0)) >= 10
+
+dds0 <- dds0[keep, ]
+
+# set factor level (reference group)
+dds0$cell <- relevel(dds0$cell, ref = "N61311")
+
+# Run DEG analysis
+dds0 <- DESeq(dds0)
+
+resultsNames(dds0)
+
+# Extract results & Log fold shrink
+res0 <- results(dds0, contrast = c("cell", "N052611", "N61311"))
+resLFC0 <- lfcShrink(dds0, coef = "cell_N052611_vs_N61311", type="apeglm")
+
+res0a <- results(dds0, contrast = c("cell", "N061011", "N61311"))
+resLFC0a <- lfcShrink(dds0, coef = "cell_N061011_vs_N61311", type="apeglm")
+
+res0b <- results(dds0, contrast = c("cell", "N080611", "N61311"))
+resLFC0b <- lfcShrink(dds0, coef = "cell_N080611_vs_N61311", type="apeglm")
 ```
+
+# Dex & Cell variables
+```{r}
+# Define design matrix for DESeq2
+dds2 <- DESeqDataSetFromMatrix(
+  countData = counts,
+  colData = colData,
+  design = ~ dex + cell)
+
+# normalization by estimating size factor
+dds2 <- estimateSizeFactors(dds2)
+
+# remove low expressed genes
+keep <- rowSums(counts(dds2)) >= 10
+dds2 <- dds2[keep, ]
+
+# set factor level (reference group)
+dds2$dex <- relevel(dds2$dex, ref = "untrt")
+dds2$cell <- relevel(dds2$cell, ref = "N61311")
+
+# Run DEG analysis
+dds2 <- DESeq(dds2)
+
+resultsNames(dds2)
+
+# Extract results & Log fold shrink
+res2 <- results(dds2, contrast = c("dex", "trt", "untrt"))
+resLFC2 <- lfcShrink(dds2, coef = "dex_trt_vs_untrt", type="apeglm")
+
+res2a <- results(dds2, contrast = c("cell", "N052611", "N61311"))
+resLFC2a <- lfcShrink(dds2, coef = "cell_N052611_vs_N61311", type="apeglm")
+
+res2b <- results(dds2, contrast = c("cell", "N061011", "N61311"))
+resLFC2b <- lfcShrink(dds2, coef = "cell_N061011_vs_N61311", type="apeglm")
+
+res2c <- results(dds2, contrast = c("cell", "N080611", "N61311"))
+resLFC2c <- lfcShrink(dds2, coef = "cell_N080611_vs_N61311", type="apeglm")
+```
+
+# Dex & Cell Interaction : **Not possible in this case**
+```{r}
+# Define design matrix for DESeq2
+dds3 <- DESeqDataSetFromMatrix(
+  countData = counts,
+  colData = colData,
+  design = ~ dex + cell + dex:cell)
+
+# normalization by estimating size factor
+dds3 <- estimateSizeFactors(dds3)
+
+# remove low expressed genes
+keep <- rowSums(counts(dds3)) >= 10
+dds3 <- dds3[keep, ]
+
+# set factor level (reference group)
+dds3$dex <- relevel(dds3$dex, ref = "untrt")
+dds3$cell <- relevel(dds3$cell, ref = "N61311")
+
+# Run DEG analysis
+# dds3 <- DESeq(dds3)
+```
+
+running `DESeq(dds3)` returns the following
+    
+    Error in checkForExperimentalReplicates(object, modelMatrix) :
+
+    The design matrix has the same number of samples and coefficients to fit,so estimation of dispersion is not possible. Treating samples as replicates was deprecated in v1.20 and no longer supported since v1.22.
+
+# Visualize All Contrasts
+```{r}
+res_list <- list(
+  "~ dex" = resLFC1,
+  "~ cell" = resLFC0,
+  "~ cell" = resLFC0a,
+  "~ cell" = resLFC0b,
+  "~ dex + cell" = resLFC2,
+  "~ dex + cell" = resLFC2a,
+  "~ dex + cell" = resLFC2b,
+  "~ dex + cell" = resLFC2c
+)
+
+plotMA_arrange_iterative(res_list)
+```
+
+
 
 Factors
 ```{r}
