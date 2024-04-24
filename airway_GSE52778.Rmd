@@ -9,145 +9,78 @@ output:
 ---
 
 # Load Libraries 
-```{r include=FALSE}
-suppressPackageStartupMessages(library("GEOquery"))
-suppressPackageStartupMessages(library("airway"))
+```{r results='hide', message=FALSE, warning=FALSE}
+library(GEOquery)
+library(airway)
 library(DESeq2)
 library(iSEE)
 library(iSEEde)
-library("org.Hs.eg.db")
-library("scater")
-library("scuttle")
+library(org.Hs.eg.db)
+library(scater)
+library(scuttle)
+library(gridExtra)
+library(qvalue)
+library(vsn) 
+library(apeglm) 
+library(ashr) 
+library(pheatmap) 
+library(RColorBrewer) 
+library(EnhancedVolcano) 
 library(gridExtra)
 ```
 
-# Geo access
-```{r eval=FALSE, include=FALSE}
-dir <- system.file("extdata",package="airway")
-
-geofile <- file.path(dir, "GSE52778_series_matrix.txt")
-
-gse <- getGEO(filename=geofile)
-
-pdata <- pData(gse)[,grepl("ch1",names(pData(gse)))]
-
-names(pdata) <- c("treatment","tissue","ercc_mix","cell","celltype")
-
-pdataclean <- data.frame(treatment=sub("treatment: (.*)","\\1",pdata$treatment),
-                         cell=sub("cell line: (.*)","\\1",pdata$cell),
-                         row.names=rownames(pdata))
-
-pdataclean$dex <- ifelse(grepl("Dex",pdataclean$treatment),"trt","untrt")
-
-pdataclean$albut <- ifelse(grepl("Albut",pdataclean$treatment),"trt","untrt")
-
-pdataclean$SampleName <- rownames(pdataclean)
-
-pdataclean$treatment <- NULL
-
-
-srafile <- file.path(dir, "SraRunInfo_SRP033351.csv")
-
-srp <- read.csv(srafile)
-
-srpsmall <- srp[,c("Run","avgLength","Experiment","Sample","BioSample","SampleName")]
-
-
-coldata <- merge(pdataclean, srpsmall, by="SampleName")
-
-rownames(coldata) <- coldata$Run
-
-coldata <- coldata[coldata$albut == "untrt",]
-
-coldata$albut <- NULL
-
-coldata
-
-write.csv(coldata, file="sample_table.csv")
-
-```
-
 # RangedSummarizedExperiment
-```{r include=FALSE}
+```{r}
+#load airway dataset as rse object
 data(airway)
 
-airway
+rse <- airway
 
-se <- airway
-
-se
+rse
 
 #extract counts
-counts <- as.data.frame(assays(se)$counts)
+counts <- as.data.frame(assays(rse)$counts)
 
 #extract metadata
-colData <- as.data.frame(colData(se))
-
-#Count stats
-summary(colSums(assay(se)) / 1e6)
-
-#Introduction
-metadata(se)
-
-#Title
-se@metadata[[1]]@title
-
-#Abstract
-se@metadata[[1]]@abstract
-
-#Sample names
-se@colData@rownames
-
-#Sum of sampes
-length(se@colData@rownames)
-
-#Sum of genes
-length(assays(se)$counts)
-
-#Genome information
-metadata(rowRanges(se))
-
-dds <- DESeqDataSet(se, design = ~ cell + dex)
-
-dds
+colData <- as.data.frame(colData(rse))
 ```
 
 # Background
 
 ## Title 
 ```{r echo=FALSE}
-se@metadata[[1]]@title
+rse@metadata[[1]]@title
 ```
 
 ## Experiment information 
 ```{r echo=FALSE}
-metadata(se)
+metadata(rse)
 ```
 
 ## Abstract
-    `r se@metadata[[1]]@abstract`
+    `r rse@metadata[[1]]@abstract`
 ```{r echo=FALSE}
-se@metadata[[1]]@abstract
+rse@metadata[[1]]@abstract
 ```
 
 ## Samples
 ```{r echo=FALSE}
-se@colData@rownames
+rse@colData@rownames
 ```
 
-## Number of samples: `r length(se@colData@rownames)`
+## Number of samples: `r length(rse@colData@rownames)`
 ```{r echo=FALSE}
-as.data.frame(colData(se))
+as.data.frame(colData(rse))
 ```
 
-## Number of Genes: `r length(assays(se)$counts)`
+## Number of Genes: `r length(assays(rse)$counts)`
 ```{r echo=FALSE}
-head(as.data.frame(assays(se)$counts))
+head(as.data.frame(assays(rse)$counts))
 ```
 
 ## Genome Information
 ```{r echo=FALSE}
-metadata(rowRanges(se))
+metadata(rowRanges(rse))
 ```
 
 
@@ -164,17 +97,17 @@ plotMA_arrange_iterative <- function(res_list) {
 
   for (i in seq_along(res_list)) {
     result <- res_list[[i]]
-    res_name <- names(res_list)[i] # Get the name of the res object
-    res_sum <- sum(result$padj < 0.05, na.rm=TRUE)
+    res_name <- names(res_list)[i] # Get the name of the resDxC1 object
+    res_sum <- sum(result$padj < 0.05, na.rm=TRUE) # Get sum of DEG's
     p <- plotMA(result, returnData = TRUE) # DESeq2's PlotMA function
     p_plot <- ggplot(p, aes(x = mean, y = lfc, color = isDE)) +
-      geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) + # Reduce non DEG genes transperancy
+      geom_point(aes(alpha = ifelse(isDE == "TRUE", 1, 0.1)), show.legend = FALSE) + # Reduce non-DEG transperancy
       scale_x_continuous(trans = "log10") + # Scale mean counts
-      ylim(-2, 2) +
+      ylim(-2, 2) +   
       labs(title = res_name, 
            subtitle = (gsub(".*\\(MAP\\):\\s*", "",
-                            result@elementMetadata@listData[["description"]][2])), 
-           caption = paste("Total genes:", res_sum)) # Label plots
+                            result@elementMetadata@listData[["description"]][2])), # workaround to label plots with resDxC1 contrasts
+           caption = paste("Total genes:", res_sum))
 
     plots[[i]] <- p_plot
   }
@@ -185,120 +118,110 @@ plotMA_arrange_iterative <- function(res_list) {
 
 
 # Dex variable only
-```{r}
+```{r message=FALSE}
 #Ensure matching sample names & order
 all(colnames(counts) %in% row.names(colData))
 
 all(colnames(counts) == row.names(colData))
 
 # Define design matrix for DESeq2
-dds1 <- DESeqDataSetFromMatrix(
+ddsDex <- DESeqDataSetFromMatrix(
   countData = counts,
   colData = colData,
   design = ~ dex
 )
 
 # normalization by estimating size factor
-dds1 <- estimateSizeFactors(dds1)
+ddsDex <- estimateSizeFactors(ddsDex)
 
 # remove low expressed genes
-keep <- rowSums(counts(dds1)) >= 10
+keep <- rowSums(counts(ddsDex)) >= 10
 
-dds1 <- dds1[keep, ]
+ddsDex <- ddsDex[keep, ]
 
 # set factor level (reference group)
-dds1$dex <- relevel(dds1$dex, ref = "untrt")
+ddsDex$dex <- relevel(ddsDex$dex, ref = "untrt")
 
 # Run DEG analysis
-dds1 <- DESeq(dds1)
+ddsDex <- DESeq(ddsDex)
 
-res1 <- results(dds1)
-
-res1
-
-resultsNames(dds1)
-
-resSum1 <- sum(res1$padj < 0.05, na.rm=TRUE)
+resDex <- results(ddsDex)
 
 # Log fold shrink
-resLFC1 <- lfcShrink(dds1, coef = "dex_trt_vs_untrt", type="apeglm")
-
-# xlim <- c(1,1e5); ylim <- c(-3,3)
-# 
-# plotMA(resLFC1, xlim=xlim, ylim=ylim, main="apeglm")
+resLFC1 <- lfcShrink(ddsDex, coef = "dex_trt_vs_untrt", type="apeglm")
 ```
 
 # Cell variable only
-```{r}
+```{r message=FALSE}
 # Define design matrix for DESeq2
-dds0 <- DESeqDataSetFromMatrix(
+ddsCell <- DESeqDataSetFromMatrix(
   countData = counts,
   colData = colData,
   design = ~ cell)
 
 # normalization by estimating size factor
-dds0 <- estimateSizeFactors(dds0)
+ddsCell <- estimateSizeFactors(ddsCell)
 
 # remove low expressed genes
-keep <- rowSums(counts(dds0)) >= 10
+keep <- rowSums(counts(ddsCell)) >= 10
 
-dds0 <- dds0[keep, ]
+ddsCell <- ddsCell[keep, ]
 
 # set factor level (reference group)
-dds0$cell <- relevel(dds0$cell, ref = "N61311")
+ddsCell$cell <- relevel(ddsCell$cell, ref = "N61311")
 
 # Run DEG analysis
-dds0 <- DESeq(dds0)
+ddsCell <- DESeq(ddsCell)
 
-resultsNames(dds0)
+resultsNames(ddsCell)
 
 # Extract results & Log fold shrink
-res0 <- results(dds0, contrast = c("cell", "N052611", "N61311"))
-resLFC0 <- lfcShrink(dds0, coef = "cell_N052611_vs_N61311", type="apeglm")
+resCell1 <- results(ddsCell, contrast = c("cell", "N052611", "N61311"))
+resCellLFC1 <- lfcShrink(ddsCell, coef = "cell_N052611_vs_N61311", type="apeglm")
 
-res0a <- results(dds0, contrast = c("cell", "N061011", "N61311"))
-resLFC0a <- lfcShrink(dds0, coef = "cell_N061011_vs_N61311", type="apeglm")
+resCell2 <- results(ddsCell, contrast = c("cell", "N061011", "N61311"))
+resCellLFC2 <- lfcShrink(ddsCell, coef = "cell_N061011_vs_N61311", type="apeglm")
 
-res0b <- results(dds0, contrast = c("cell", "N080611", "N61311"))
-resLFC0b <- lfcShrink(dds0, coef = "cell_N080611_vs_N61311", type="apeglm")
+resCell3 <- results(ddsCell, contrast = c("cell", "N080611", "N61311"))
+resCellLFC3 <- lfcShrink(ddsCell, coef = "cell_N080611_vs_N61311", type="apeglm")
 ```
 
 # Dex & Cell variables
-```{r}
+```{r message=FALSE}
 # Define design matrix for DESeq2
-dds2 <- DESeqDataSetFromMatrix(
+ddsDxC <- DESeqDataSetFromMatrix(
   countData = counts,
   colData = colData,
   design = ~ dex + cell)
 
 # normalization by estimating size factor
-dds2 <- estimateSizeFactors(dds2)
+ddsDxC <- estimateSizeFactors(ddsDxC)
 
 # remove low expressed genes
-keep <- rowSums(counts(dds2)) >= 10
-dds2 <- dds2[keep, ]
+keep <- rowSums(counts(ddsDxC)) >= 10
+ddsDxC <- ddsDxC[keep, ]
 
 # set factor level (reference group)
-dds2$dex <- relevel(dds2$dex, ref = "untrt")
-dds2$cell <- relevel(dds2$cell, ref = "N61311")
+ddsDxC$dex <- relevel(ddsDxC$dex, ref = "untrt")
+ddsDxC$cell <- relevel(ddsDxC$cell, ref = "N61311")
 
 # Run DEG analysis
-dds2 <- DESeq(dds2)
+ddsDxC <- DESeq(ddsDxC)
 
-resultsNames(dds2)
+resultsNames(ddsDxC)
 
 # Extract results & Log fold shrink
-res2 <- results(dds2, contrast = c("dex", "trt", "untrt"))
-resLFC2 <- lfcShrink(dds2, coef = "dex_trt_vs_untrt", type="apeglm")
+resDxC1 <- results(ddsDxC, contrast = c("dex", "trt", "untrt"))
+resDxCLFC1 <- lfcShrink(ddsDxC, coef = "dex_trt_vs_untrt", type="apeglm")
 
-res2a <- results(dds2, contrast = c("cell", "N052611", "N61311"))
-resLFC2a <- lfcShrink(dds2, coef = "cell_N052611_vs_N61311", type="apeglm")
+resDxC2 <- results(ddsDxC, contrast = c("cell", "N052611", "N61311"))
+resDxCLFC2 <- lfcShrink(ddsDxC, coef = "cell_N052611_vs_N61311", type="apeglm")
 
-res2b <- results(dds2, contrast = c("cell", "N061011", "N61311"))
-resLFC2b <- lfcShrink(dds2, coef = "cell_N061011_vs_N61311", type="apeglm")
+resDxC3 <- results(ddsDxC, contrast = c("cell", "N061011", "N61311"))
+resDxCLFC3 <- lfcShrink(ddsDxC, coef = "cell_N061011_vs_N61311", type="apeglm")
 
-res2c <- results(dds2, contrast = c("cell", "N080611", "N61311"))
-resLFC2c <- lfcShrink(dds2, coef = "cell_N080611_vs_N61311", type="apeglm")
+resDxC4 <- results(ddsDxC, contrast = c("cell", "N080611", "N61311"))
+resDxCLFC4 <- lfcShrink(ddsDxC, coef = "cell_N080611_vs_N61311", type="apeglm")
 ```
 
 # Dex & Cell Interaction : **Not possible in this case**
@@ -331,16 +254,16 @@ running `DESeq(dds3)` returns the following
     The design matrix has the same number of samples and coefficients to fit,so estimation of dispersion is not possible. Treating samples as replicates was deprecated in v1.20 and no longer supported since v1.22.
 
 # Visualize All Contrasts
-```{r}
+```{r warning=FALSE}
 res_list <- list(
   "~ dex" = resLFC1,
-  "~ cell" = resLFC0,
-  "~ cell" = resLFC0a,
-  "~ cell" = resLFC0b,
-  "~ dex + cell" = resLFC2,
-  "~ dex + cell" = resLFC2a,
-  "~ dex + cell" = resLFC2b,
-  "~ dex + cell" = resLFC2c
+  "~ cell" = resCellLFC1,
+  "~ cell" = resCellLFC2,
+  "~ cell" = resCellLFC3,
+  "~ dex + cell" = resDxCLFC1,
+  "~ dex + cell" = resDxCLFC2,
+  "~ dex + cell" = resDxCLFC3,
+  "~ dex + cell" = resDxCLFC4
 )
 
 plotMA_arrange_iterative(res_list)
@@ -348,8 +271,111 @@ plotMA_arrange_iterative(res_list)
 
 
 
-Factors
+# FDR & qvalue 
 ```{r}
-# dds$condition <- relevel(dds$condition, ref = "untreated")
+
+plotStats <- function(res_list) {
+  for (i in seq_along(res_list)) {
+    result <- res_list[[i]]
+    res_name <- names(res_list)[i]
+    qobjs <- qvalue(result$pvalue)
+    hist <- hist(qobjs)
+    titled <- hist + labs(title = paste(res_name, "|", sub(".*: ", "", result@elementMetadata@listData[["description"]][2])))
+    print(titled)
+    plot(qobjs)
+    summary(qobjs)
+  }
+}
+
+
+plotStats(res_list)
+
 ```
 
+
+<!-- ```{r} -->
+<!-- # Variance stabilizing transformation. (log2 scaling for large counts) -->
+<!-- vsd <- vst(dds, blind = FALSE) -->
+
+<!-- rld <- rlog(dds, blind = FALSE) -->
+
+<!-- ntd <- normTransform(dds) -->
+
+
+<!-- # -->
+<!-- # meanSdPlot(assay(ntd)) -->
+<!-- # -->
+<!-- # meanSdPlot(assay(vsd)) -->
+<!-- # -->
+<!-- # meanSdPlot(assay(rld)) -->
+<!-- ``` -->
+
+<!-- # Quality Assesment -->
+
+<!-- ## Quality assesment with Heatmaps -->
+<!-- ```{r} -->
+<!-- select <- order(rowMeans(counts(dds, normalized = TRUE)), -->
+<!--   decreasing = TRUE -->
+<!-- )[1:20] -->
+
+<!-- df <- as.data.frame(colData(dds)[, c("patient_group", "cell_type")]) -->
+
+<!-- pheatmap(assay(ntd)[select, ], -->
+<!--   cluster_rows = TRUE, show_rownames = TRUE, -->
+<!--   cluster_cols = TRUE, annotation_col = df, show_colnames = FALSE, -->
+<!--   main = "ntd", scale = "row" -->
+<!-- ) -->
+
+<!-- pheatmap(assay(vsd)[select, ], -->
+<!--   cluster_rows = TRUE, show_rownames = TRUE, -->
+<!--   cluster_cols = TRUE, annotation_col = df, show_colnames = FALSE, -->
+<!--   main = "vsd", scale = "row" -->
+<!-- ) -->
+
+<!-- pheatmap(assay(rld)[select, ], -->
+<!--   cluster_rows = TRUE, show_rownames = TRUE, -->
+<!--   cluster_cols = TRUE, annotation_col = df, show_colnames = FALSE, -->
+<!--   main = "rld", scale = "row" -->
+<!-- ) -->
+<!-- ``` -->
+
+<!-- ## Sample distance -->
+<!-- ```{r} -->
+<!-- # Determine between group variety -->
+<!-- sampleDists <- dist(t(assay(vsd))) -->
+
+<!-- sampleDistMatrix <- as.matrix(sampleDists) -->
+
+<!-- rownames(sampleDistMatrix) <- paste(vsd$cell_type, vsd$patient_group, sep = "-") -->
+
+<!-- colnames(sampleDistMatrix) <- NULL -->
+
+<!-- colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255) -->
+
+<!-- pheatmap(sampleDistMatrix, -->
+<!--   clustering_distance_rows = sampleDists, -->
+<!--   clustering_distance_cols = sampleDists, -->
+<!--   col = colors -->
+<!-- ) -->
+<!-- ``` -->
+
+<!-- ## PCA plots -->
+<!-- ```{r} -->
+<!-- plotPCA(vsd, intgroup = c("cell_type", "patient_group")) -->
+
+<!-- plotPCA(vsd, intgroup = c("cell_type")) -->
+
+
+<!-- pcaData <- plotPCA(vsd, -->
+<!--   intgroup = c("cell_type", "patient_group"), -->
+<!--   returnData = TRUE -->
+<!-- ) -->
+
+<!-- percentVar <- round(100 * attr(pcaData, "percentVar")) -->
+
+<!-- ggplot(pcaData, aes(PC1, PC2, color = patient_group, shape = cell_type)) + -->
+<!--   geom_point(size = 3) + -->
+<!--   xlab(paste0("PC1: ", percentVar[1], "% variance")) + -->
+<!--   ylab(paste0("PC2: ", percentVar[2], "% variance")) + -->
+<!--   coord_fixed() -->
+<!-- ``` -->
