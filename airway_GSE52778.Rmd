@@ -2,13 +2,10 @@
 title: "airway_GSE52778"
 author: "Mikias HW"
 date: "`r Sys.Date()`"
-output: 
-  prettydoc::html_pretty:
-    theme: hpstr
-    df_print: paged
+output: html_document
 ---
 
-# Load Libraries 
+### Load Libraries 
 ```{r results='hide', message=FALSE, warning=FALSE}
 library(GEOquery)
 library(airway)
@@ -29,6 +26,7 @@ library(EnhancedVolcano)
 library(gridExtra)
 ```
 
+# Load data
 # RangedSummarizedExperiment
 ```{r}
 #load airway dataset as rse object
@@ -48,43 +46,42 @@ colData <- as.data.frame(colData(rse))
 # Background
 
 ## Title 
-```{r echo=FALSE}
+```{r}
 rse@metadata[[1]]@title
 ```
 
 ## Experiment information 
-```{r echo=FALSE}
+```{r}
 metadata(rse)
 ```
 
 ## Abstract
-    `r rse@metadata[[1]]@abstract`
-```{r echo=FALSE}
+```{r}
 rse@metadata[[1]]@abstract
 ```
 
 ## Samples
-```{r echo=FALSE}
+```{r}
 rse@colData@rownames
 ```
 
-## Number of samples: `r length(rse@colData@rownames)`
-```{r echo=FALSE}
+## Number of samples: **`r length(rse@colData@rownames)`**
+```{r}
 as.data.frame(colData(rse))
 ```
 
-## Number of Genes: `r length(assays(rse)$counts)`
-```{r echo=FALSE}
+## Number of Genes: **`r length(assays(rse)$counts)`**
+```{r}
 head(as.data.frame(assays(rse)$counts))
 ```
 
 ## Genome Information
-```{r echo=FALSE}
+```{r}
 metadata(rowRanges(rse))
 ```
 
-
-# Define MA plotting function
+# Define functions
+## MA Plots
 ```{r}
 # MA Plots
 # Arranged into 2 rows
@@ -116,8 +113,45 @@ plotMA_arrange_iterative <- function(res_list) {
 }
 ```
 
+## pvalue histograms
+```{r}
 
-# Dex variable only
+plotStats <- function(res_list) {
+  for (i in seq_along(res_list)) {
+    result <- res_list[[i]]
+    res_name <- names(res_list)[i]
+    qobjs <- qvalue(result$pvalue)
+    hist <- hist(qobjs)
+    titled <- hist + labs(title = paste(res_name, "|", sub(".*: ", "", result@elementMetadata@listData[["description"]][2])))
+    print(titled)
+    plot(qobjs)
+    summary(qobjs)
+  }
+}
+```
+
+## SD Plots
+```{r}
+plot_Transformations <- function(trans_list) {
+  plots <- list()
+  for (i in seq_along(trans_list)) {
+    trans <- trans_list[[i]]
+    name <- names(trans_list)[i]
+    sd <- meanSdPlot(assay(trans), plot  = FALSE)
+    plots[[i]] <- sd[["gg"]] + labs(title = name) + theme(legend.position = "none", 
+                                                          axis.title.x = element_blank(),
+                                                          axis.title.y = element_blank(),
+                                                          axis.text.x = element_blank(),
+                                                          axis.text.y = element_blank(),
+                                                          axis.ticks = element_blank())
+  }
+  grid.arrange(grobs = plots, ncol = 4)
+}
+```
+
+
+# Construct DESeq Objects
+## Dex variable only
 ```{r message=FALSE}
 #Ensure matching sample names & order
 all(colnames(counts) %in% row.names(colData))
@@ -151,7 +185,7 @@ resDex <- results(ddsDex)
 resLFC1 <- lfcShrink(ddsDex, coef = "dex_trt_vs_untrt", type="apeglm")
 ```
 
-# Cell variable only
+## Cell variable only
 ```{r message=FALSE}
 # Define design matrix for DESeq2
 ddsCell <- DESeqDataSetFromMatrix(
@@ -186,7 +220,7 @@ resCell3 <- results(ddsCell, contrast = c("cell", "N080611", "N61311"))
 resCellLFC3 <- lfcShrink(ddsCell, coef = "cell_N080611_vs_N61311", type="apeglm")
 ```
 
-# Dex & Cell variables
+## Dex & Cell variables
 ```{r message=FALSE}
 # Define design matrix for DESeq2
 ddsDxC <- DESeqDataSetFromMatrix(
@@ -224,7 +258,7 @@ resDxC4 <- results(ddsDxC, contrast = c("cell", "N080611", "N61311"))
 resDxCLFC4 <- lfcShrink(ddsDxC, coef = "cell_N080611_vs_N61311", type="apeglm")
 ```
 
-# Dex & Cell Interaction : **Not possible in this case**
+## Dex & Cell Interaction : **Not possible in this case**
 ```{r}
 # Define design matrix for DESeq2
 dds3 <- DESeqDataSetFromMatrix(
@@ -252,8 +286,8 @@ running `DESeq(dds3)` returns the following
     Error in checkForExperimentalReplicates(object, modelMatrix) :
 
     The design matrix has the same number of samples and coefficients to fit,so estimation of dispersion is not possible. Treating samples as replicates was deprecated in v1.20 and no longer supported since v1.22.
-
-# Visualize All Contrasts
+# Visualize
+## MA PLots: all Contrasts
 ```{r warning=FALSE}
 res_list <- list(
   "~ dex" = resLFC1,
@@ -269,30 +303,14 @@ res_list <- list(
 plotMA_arrange_iterative(res_list)
 ```
 
-
-
-# FDR & qvalue 
+## FDR & qvalue 
 ```{r}
-
-plotStats <- function(res_list) {
-  for (i in seq_along(res_list)) {
-    result <- res_list[[i]]
-    res_name <- names(res_list)[i]
-    qobjs <- qvalue(result$pvalue)
-    hist <- hist(qobjs)
-    titled <- hist + labs(title = paste(res_name, "|", sub(".*: ", "", result@elementMetadata@listData[["description"]][2])))
-    print(titled)
-    plot(qobjs)
-    summary(qobjs)
-  }
-}
-
 
 plotStats(res_list)
 
 ```
 
-# Transformations & Variance
+## Transformations & Variance
 ```{r}
 # Contrast Dex
 logDex <- log2(assay(ddsDex))
@@ -350,24 +368,6 @@ trans_list <- list(
   "~ dex + cell: rlog" = rldDxC,
   "~ dex + cell: norm" = ntdDxC
 )
-
-
-plot_Transformations <- function(trans_list) {
-  plots <- list()
-  for (i in seq_along(trans_list)) {
-    trans <- trans_list[[i]]
-    name <- names(trans_list)[i]
-    sd <- meanSdPlot(assay(trans), plot  = FALSE)
-    plots[[i]] <- sd[["gg"]] + labs(title = name) + theme(legend.position = "none", 
-                                                          axis.title.x = element_blank(),
-                                                          axis.title.y = element_blank(),
-                                                          axis.text.x = element_blank(),
-                                                          axis.text.y = element_blank(),
-                                                          axis.ticks = element_blank())
-  }
-  grid.arrange(grobs = plots, ncol = 4)
-}
-
 
 plot_Transformations(trans_list)
 
