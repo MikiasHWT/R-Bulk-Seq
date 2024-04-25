@@ -292,90 +292,166 @@ plotStats(res_list)
 
 ```
 
+# Transformations & Variance
+```{r}
+# Contrast Dex
+logDex <- log2(assay(ddsDex))
 
-<!-- ```{r} -->
-<!-- # Variance stabilizing transformation. (log2 scaling for large counts) -->
-<!-- vsd <- vst(dds, blind = FALSE) -->
+logDexplot <- meanSdPlot(logDex)
 
-<!-- rld <- rlog(dds, blind = FALSE) -->
+logDexplot[["gg"]] + labs(title = "~ dex: log2")
 
-<!-- ntd <- normTransform(dds) -->
+# Improved Transformations
+vsdDex <- vst(ddsDex, blind = FALSE)
 
+rldDex <- rlog(ddsDex, blind = FALSE)
 
-<!-- # -->
-<!-- # meanSdPlot(assay(ntd)) -->
-<!-- # -->
-<!-- # meanSdPlot(assay(vsd)) -->
-<!-- # -->
-<!-- # meanSdPlot(assay(rld)) -->
-<!-- ``` -->
+ntdDex <- normTransform(ddsDex)
 
-<!-- # Quality Assesment -->
+# Contrast Cell
+logCell <- log2(assay(ddsCell))
 
-<!-- ## Quality assesment with Heatmaps -->
-<!-- ```{r} -->
-<!-- select <- order(rowMeans(counts(dds, normalized = TRUE)), -->
-<!--   decreasing = TRUE -->
-<!-- )[1:20] -->
+logCellplot <- meanSdPlot(logCell)
 
-<!-- df <- as.data.frame(colData(dds)[, c("patient_group", "cell_type")]) -->
+logCellplot[["gg"]] + labs(title = "~ cell: log2")
 
-<!-- pheatmap(assay(ntd)[select, ], -->
-<!--   cluster_rows = TRUE, show_rownames = TRUE, -->
-<!--   cluster_cols = TRUE, annotation_col = df, show_colnames = FALSE, -->
-<!--   main = "ntd", scale = "row" -->
-<!-- ) -->
+# Improved Transformations
+vsdCell <- vst(ddsCell, blind = FALSE)
 
-<!-- pheatmap(assay(vsd)[select, ], -->
-<!--   cluster_rows = TRUE, show_rownames = TRUE, -->
-<!--   cluster_cols = TRUE, annotation_col = df, show_colnames = FALSE, -->
-<!--   main = "vsd", scale = "row" -->
-<!-- ) -->
+rldCell <- rlog(ddsCell, blind = FALSE)
 
-<!-- pheatmap(assay(rld)[select, ], -->
-<!--   cluster_rows = TRUE, show_rownames = TRUE, -->
-<!--   cluster_cols = TRUE, annotation_col = df, show_colnames = FALSE, -->
-<!--   main = "rld", scale = "row" -->
-<!-- ) -->
-<!-- ``` -->
+ntdCell <- normTransform(ddsCell)
 
-<!-- ## Sample distance -->
-<!-- ```{r} -->
-<!-- # Determine between group variety -->
-<!-- sampleDists <- dist(t(assay(vsd))) -->
+# Contrast Dex + Cell
+logDxC <- log2(assay(ddsDxC))
 
-<!-- sampleDistMatrix <- as.matrix(sampleDists) -->
+logDxCplot <- meanSdPlot(logDxC)
 
-<!-- rownames(sampleDistMatrix) <- paste(vsd$cell_type, vsd$patient_group, sep = "-") -->
-
-<!-- colnames(sampleDistMatrix) <- NULL -->
-
-<!-- colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255) -->
-
-<!-- pheatmap(sampleDistMatrix, -->
-<!--   clustering_distance_rows = sampleDists, -->
-<!--   clustering_distance_cols = sampleDists, -->
-<!--   col = colors -->
-<!-- ) -->
-<!-- ``` -->
-
-<!-- ## PCA plots -->
-<!-- ```{r} -->
-<!-- plotPCA(vsd, intgroup = c("cell_type", "patient_group")) -->
-
-<!-- plotPCA(vsd, intgroup = c("cell_type")) -->
+logDxCplot[["gg"]] + labs(title = "~ dex + cell: log2")
 
 
-<!-- pcaData <- plotPCA(vsd, -->
-<!--   intgroup = c("cell_type", "patient_group"), -->
-<!--   returnData = TRUE -->
-<!-- ) -->
+# Improved Transformations
+vsdDxC <- vst(ddsDxC, blind = FALSE)
 
-<!-- percentVar <- round(100 * attr(pcaData, "percentVar")) -->
+rldDxC <- rlog(ddsDxC, blind = FALSE)
 
-<!-- ggplot(pcaData, aes(PC1, PC2, color = patient_group, shape = cell_type)) + -->
-<!--   geom_point(size = 3) + -->
-<!--   xlab(paste0("PC1: ", percentVar[1], "% variance")) + -->
-<!--   ylab(paste0("PC2: ", percentVar[2], "% variance")) + -->
-<!--   coord_fixed() -->
-<!-- ``` -->
+ntdDxC <- normTransform(ddsDxC)
+
+
+
+trans_list <- list(
+  "~ dex: vst" = vsdDex,
+  "~ dex: rlog" = rldDex,
+  "~ dex: norm" = ntdDex,
+  "~ cell: vst" = vsdCell,
+  "~ cell: rlog" = rldCell,
+  "~ cell: norm" = ntdCell,
+  "~ dex + cell: vst" = vsdDxC,
+  "~ dex + cell: rlog" = rldDxC,
+  "~ dex + cell: norm" = ntdDxC
+)
+
+
+plot_Transformations <- function(trans_list) {
+  plots <- list()
+  for (i in seq_along(trans_list)) {
+    trans <- trans_list[[i]]
+    name <- names(trans_list)[i]
+    sd <- meanSdPlot(assay(trans), plot  = FALSE)
+    plots[[i]] <- sd[["gg"]] + labs(title = name) + theme(legend.position = "none", 
+                                                          axis.title.x = element_blank(),
+                                                          axis.title.y = element_blank(),
+                                                          axis.text.x = element_blank(),
+                                                          axis.text.y = element_blank(),
+                                                          axis.ticks = element_blank())
+  }
+  grid.arrange(grobs = plots, ncol = 4)
+}
+
+
+plot_Transformations(trans_list)
+
+```
+
+# Quality Assesment
+
+## Quality assesment with Heatmaps
+```{r}
+# Select top 20 DEG's
+selectDex <- order(rowMeans(counts(ddsDex, normalized = TRUE)), decreasing = TRUE)[1:20]
+
+selectCell <- order(rowMeans(counts(ddsCell, normalized = TRUE)), decreasing = TRUE)[1:20]
+
+selectDxC <- order(rowMeans(counts(ddsDxC, normalized = TRUE)), decreasing = TRUE)[1:20]
+
+# Extract clustering variables
+dfDex <- as.data.frame(colData(ddsDex)[, c("dex")])
+
+dfCell <- as.data.frame(colData(ddsCell)[, c("cell")])
+
+dfDxC <- as.data.frame(colData(ddsDxC)[, c("dex", "cell")])
+
+
+# Heatmaps
+pheatmap(assay(ntdDxC)[selectDxC, ],
+  cluster_rows = TRUE, show_rownames = FALSE,
+  cluster_cols = TRUE, annotation_col = dfDxC, show_colnames = FALSE,
+  main = "ntd", scale = "row"
+)
+
+pheatmap(assay(vsdDxC)[selectDxC, ],
+  cluster_rows = TRUE, show_rownames = FALSE,
+  cluster_cols = TRUE, annotation_col = dfDxC, show_colnames = FALSE,
+  main = "vsd", scale = "row"
+)
+
+pheatmap(assay(rldDxC)[selectDxC, ],
+  cluster_rows = TRUE, show_rownames = FALSE,
+  cluster_cols = TRUE, annotation_col = dfDxC, show_colnames = FALSE,
+  main = "rld", scale = "row"
+)
+```
+
+## Sample distance
+```{r}
+# Determine between group variety
+sampleDists <- dist(t(assay(vsdDxC)))
+
+sampleDistMatrix <- as.matrix(sampleDists)
+
+rownames(sampleDistMatrix) <- paste(vsdDxC$dex, vsdDxC$cell, sep = "-")
+
+colnames(sampleDistMatrix) <- NULL
+
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
+
+pheatmap(sampleDistMatrix,
+  clustering_distance_rows = sampleDists,
+  clustering_distance_cols = sampleDists,
+  col = colors, main = "Between Group Variability"
+)
+```
+
+## PCA plots
+```{r}
+plotPCA(vsdDxC, intgroup = c("dex", "cell")) + labs(title = "vst(~Dex+Cell): PCA by Dex & Cell")
+
+plotPCA(vsdDxC, intgroup = c("cell")) + labs(title = "vst(~Dex+Cell): PCA by Cell")
+
+plotPCA(vsdDxC, intgroup = c("dex")) + labs(title = "vst(~Dex+Cell): PCA by Dex")
+
+
+pcaData <- plotPCA(vsdDxC,
+  intgroup = c("dex", "cell"),
+  returnData = TRUE
+)
+
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+ggplot(pcaData, aes(PC1, PC2, color = dex, shape = cell)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  coord_fixed() +
+  labs(title = "vst(~Dex+Cell): PCA by Dex & Cell")
+```
