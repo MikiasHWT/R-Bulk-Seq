@@ -2,32 +2,78 @@
 title: "airway_GSE52778"
 author: "Mikias HW"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  html_document:
+    toc: true
+    toc_float: true
 ---
 
 ### Load Libraries 
 ```{r results='hide', message=FALSE, warning=FALSE}
-library(GEOquery)
-library(airway)
-library(DESeq2)
-library(iSEE)
-library(iSEEde)
-library(org.Hs.eg.db)
-library(scater)
-library(scuttle)
-library(gridExtra)
-library(qvalue)
-library(vsn) 
-library(apeglm) 
-library(ashr) 
-library(pheatmap) 
-library(RColorBrewer) 
-library(EnhancedVolcano) 
-library(gridExtra)
+# Gene Expression Analysis
+library(airway)      # Analysis of single-cell RNA-seq datasets
+library(DESeq2)     # Differential gene expression analysis
+library(iSEE)       # Interactive visualization of multi-dimensional data
+library(iSEEde)     # iSEE extension for differential expression analysis
+library(scater)     # Single-cell analysis toolkit for expression data
+library(scuttle)    # Utilities for single-cell RNA-seq analysis
+
+# Visualization and Plotting
+library(gridExtra)      # Arrange multiple plots in a grid
+library(cowplot)        # Arrange and annotate multiple plots
+library(pheatmap)       # Creation of heatmaps
+library(RColorBrewer)   # Color palettes for plots
+library(EnhancedVolcano)# Volcano plots for differential expression analysis
+library(ggvenn)         # Venn diagrams using ggplot2
+library(ggupset)        # UpSet plots for visualizing set intersections
+library(ggstance)       # Horizontal versions of ggplot2 geoms
+
+# Statistical Analysis and Testing
+library(qvalue)     # Estimation of q-values
+library(vsn)        # Variance stabilization and normalization
+library(apeglm)     # Adaptive shrinkage for differential expression
+library(ashr)       # Empirical Bayes shrinkage estimation
+
+# Data Management and Manipulation
+library(conflicted) # Conflict resolution for function names
+library(tidyverse)  # Collection of packages for data manipulation and visualization
+
+# Biological Databases and Annotation
+library(org.Mm.eg.db)  # Annotation package for the mouse genome
+library(org.Hs.eg.db)  # Annotation package for the human genome
+library(AnnotationHub) # Access to various biological annotation resources
+library(ensembldb)     # Annotation package for Ensembl databases
+library(biomaRt)       # Interface to BioMart biological databases
+
+# Pathway and Functional Analysis
+library(DOSE)           # Disease ontology and pathway analysis
+library(pathview)       # Pathway-based data integration and visualization
+library(clusterProfiler) # Gene set enrichment analysis
+library(enrichplot)     # Visualization of enrichment analysis results
+library(ReactomePA)     # Pathway analysis using Reactome database
+
+# Other Topics
+library(GEOquery)       # Access to Gene Expression Omnibus (GEO) datasets
+library(europepmc)      # Access to European PubMed Central literature data
+library(bigmemory)      # Management and analysis of large datasets in memory
+library(bigalgebra)     # Linear and generalized linear algebra operations on large datasets
+```
+
+### Conflicted functions
+```{r results='hide', message=FALSE, warning=FALSE}
+# Set function preferences
+conflicts_prefer(dplyr::select)
+
+conflicts_prefer(dplyr::filter)
+
+conflicts_prefer(dplyr::slice)
+
+conflicts_prefer(SummarizedExperiment::rowRanges)
+
 ```
 
 # Load data
-# RangedSummarizedExperiment
+## RangedSummarizedExperiment
 ```{r}
 #load airway dataset as rse object
 data(airway)
@@ -120,12 +166,12 @@ plotStats <- function(res_list) {
   for (i in seq_along(res_list)) {
     result <- res_list[[i]]
     res_name <- names(res_list)[i]
-    qobjs <- qvalue(result$pvalue)
-    hist <- hist(qobjs)
-    titled <- hist + labs(title = paste(res_name, "|", sub(".*: ", "", result@elementMetadata@listData[["description"]][2])))
-    print(titled)
-    plot(qobjs)
-    summary(qobjs)
+    qobjs <- qvalue(result$pvalue) # Save qvalue object
+    hist <- hist(qobjs) # save pvalue histogram as gg object
+    titled <- hist + labs(title = paste(res_name, "|", sub(".*: ", "", result@elementMetadata@listData[["description"]][2]))) # label plot with contrast 
+    print(titled) # plot pvalue histogram
+    plot(qobjs) # plot various qvalue plots
+    summary(qobjs) # summarize p & q value comparisons
   }
 }
 ```
@@ -137,7 +183,7 @@ plot_Transformations <- function(trans_list) {
   for (i in seq_along(trans_list)) {
     trans <- trans_list[[i]]
     name <- names(trans_list)[i]
-    sd <- meanSdPlot(assay(trans), plot  = FALSE)
+    sd <- meanSdPlot(trans, plot  = FALSE, bins = 100) # save mean/SD plot output as gg object
     plots[[i]] <- sd[["gg"]] + labs(title = name) + theme(legend.position = "none", 
                                                           axis.title.x = element_blank(),
                                                           axis.title.y = element_blank(),
@@ -145,7 +191,7 @@ plot_Transformations <- function(trans_list) {
                                                           axis.text.y = element_blank(),
                                                           axis.ticks = element_blank())
   }
-  grid.arrange(grobs = plots, ncol = 4)
+  grid.arrange(grobs = plots, ncol = 2, top = "Gene Count Transforms", left = "SD", bottom = "rank(mean)")
 }
 ```
 
@@ -286,9 +332,11 @@ running `DESeq(dds3)` returns the following
     Error in checkForExperimentalReplicates(object, modelMatrix) :
 
     The design matrix has the same number of samples and coefficients to fit,so estimation of dispersion is not possible. Treating samples as replicates was deprecated in v1.20 and no longer supported since v1.22.
+
 # Visualize
 ## MA PLots: all Contrasts
-```{r warning=FALSE}
+```{r warning=FALSE, fig.width=14, fig.height=12}
+# Prep results list for predefined plotting function
 res_list <- list(
   "~ dex" = resLFC1,
   "~ cell" = resCellLFC1,
@@ -300,75 +348,99 @@ res_list <- list(
   "~ dex + cell" = resDxCLFC4
 )
 
+# Call plotting function
 plotMA_arrange_iterative(res_list)
 ```
 
+## Volcano Plot
+```{r fig.width=10, fig.height=8}
+# Create DF for ggplot volcano plot
+resDxCLFC1_DF <- as.data.frame(resDxCLFC1)
+
+resDxCLFC1_DF <- resDxCLFC1_DF |>
+  mutate(`-log10(pvalue)` = -log10(pvalue)) |> 
+   rownames_to_column(var = "ENSEMBL")
+
+
+# Query database for gene Symbols
+GeneSymbols = bitr(resDxCLFC1_DF$ENSEMBL, 
+                  fromType="ENSEMBL", 
+                  toType="SYMBOL", 
+                  OrgDb="org.Hs.eg.db")
+
+# Merge two DF's
+resDxCLFC1_DF <- resDxCLFC1_DF |> 
+  left_join(GeneSymbols, by = "ENSEMBL")
+
+# plot enchanced volcano
+EnhancedVolcano(resDxCLFC1_DF,
+  lab = resDxCLFC1_DF$SYMBOL,
+  x = "log2FoldChange",
+  y = "pvalue",
+  title = "Treated vs Untreated",
+  pCutoff = 1e-05,
+  FCcutoff = 1,
+  pointSize = 2,
+  labSize = 4,
+  colAlpha = 0.3
+)
+
+# gg volcano plot
+ggplot(resDxCLFC1_DF, aes(x = log2FoldChange, y = `-log10(pvalue)`)) +
+  geom_point(aes(colour = padj < 0.05), size = 1) +
+  geom_text_repel(data = ~ top_n(.x, 20, wt = -padj), aes(label = SYMBOL)) +
+  labs(title = "Treated vs Untreated")
+```
+
+
+
 ## FDR & qvalue 
 ```{r}
-
+# Call previously defined function
 plotStats(res_list)
 
 ```
 
 ## Transformations & Variance
+With higher levels of RNA expression comes higher degree of variability. In order to more easily visualize and rank gene expression, this mean-variance relationship needs to be controlled through transformation. Log2 was a common route of transformation but tends to lead to overestimation in the low gene expression range. 
+
+Plotting mean by standard deviation, we want to see a flat line for the range of expressions. 
+
 ```{r}
-# Contrast Dex
-logDex <- log2(assay(ddsDex))
+# Raw counts Mean-SD plot
+# ranked mean
+meanSdPlot(assay(ddsDxC), ranks = FALSE, bins = 100)
+# original scale
+meanSdPlot(assay(ddsDxC), bins = 100)
 
-logDexplot <- meanSdPlot(logDex)
+# Log 2 Transformation
+logTrans <- log2(assay(ddsDxC) + 1)
 
-logDexplot[["gg"]] + labs(title = "~ dex: log2")
-
-# Improved Transformations
-vsdDex <- vst(ddsDex, blind = FALSE)
-
-rldDex <- rlog(ddsDex, blind = FALSE)
-
-ntdDex <- normTransform(ddsDex)
-
-# Contrast Cell
-logCell <- log2(assay(ddsCell))
-
-logCellplot <- meanSdPlot(logCell)
-
-logCellplot[["gg"]] + labs(title = "~ cell: log2")
-
-# Improved Transformations
-vsdCell <- vst(ddsCell, blind = FALSE)
-
-rldCell <- rlog(ddsCell, blind = FALSE)
-
-ntdCell <- normTransform(ddsCell)
-
-# Contrast Dex + Cell
-logDxC <- log2(assay(ddsDxC))
-
-logDxCplot <- meanSdPlot(logDxC)
-
-logDxCplot[["gg"]] + labs(title = "~ dex + cell: log2")
-
-
-# Improved Transformations
+# Variance stabilizing transformation (preferred for speed)
 vsdDxC <- vst(ddsDxC, blind = FALSE)
 
+vsdTrans <- assay(vsdDxC)
+
+# Regularized log transformation (preferred for variable size factors)
 rldDxC <- rlog(ddsDxC, blind = FALSE)
 
+rldTrans <- assay(rldDxC)
+
+# Normalized counts transformation
 ntdDxC <- normTransform(ddsDxC)
 
+ntdTrans <- assay(ntdDxC)
 
 
+# Prepare list of transformations for predefined plotting function
 trans_list <- list(
-  "~ dex: vst" = vsdDex,
-  "~ dex: rlog" = rldDex,
-  "~ dex: norm" = ntdDex,
-  "~ cell: vst" = vsdCell,
-  "~ cell: rlog" = rldCell,
-  "~ cell: norm" = ntdCell,
-  "~ dex + cell: vst" = vsdDxC,
-  "~ dex + cell: rlog" = rldDxC,
-  "~ dex + cell: norm" = ntdDxC
+  "log2 + 1" = logTrans,
+  "vst" = vsdTrans,
+  "rlog" = rldTrans,
+  "norm" = ntdTrans
 )
 
+# Call plotting function
 plot_Transformations(trans_list)
 
 ```
@@ -454,4 +526,197 @@ ggplot(pcaData, aes(PC1, PC2, color = dex, shape = cell)) +
   ylab(paste0("PC2: ", percentVar[2], "% variance")) +
   coord_fixed() +
   labs(title = "vst(~Dex+Cell): PCA by Dex & Cell")
+```
+
+# Visualize Results
+
+## Plot counts
+```{r}
+# plot counts for most significant gene for treated vs untreated contract in 2 variable DGE analysis
+p <- plotCounts(ddsDxC,
+  gene = which.min(resDxC1$padj),
+  intgroup = c("dex", "cell"),
+  returnData = TRUE
+)
+
+ggplot(p, aes(x = dex, y = count, color = cell)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0.1), size = 4) +
+  scale_y_log10(breaks = c(25, 100, 400)) +
+  labs(title = rownames(resDxC1)[which.min(resDxC1$padj)])
+
+```
+
+## Venn Diagram
+```{r}
+# # Plot venn diagram
+# vennTest <- tibble(ENSEMBLEID = rownames(resDxC1)) |>
+#   mutate(Treated = resDxC1$padj < 0.05 &
+#     !is.na(resDxC1$padj) &
+#     resDxC1$log2FoldChange > 0) |>
+#   mutate(Untreated = resDxC1$padj < 0.05 &
+#     !is.na(resDxC1$padj) &
+#     resDxC1$log2FoldChange < 0) |>
+#   mutate(N052611 = resDxC2$padj < 0.05 &
+#     !is.na(resDxC2$padj) &
+#     resDxC2$log2FoldChange > 0) |>
+#   mutate(N61311 = resDxC2$padj < 0.05 &
+#     !is.na(resDxC2$padj) &
+#     resDxC2$log2FoldChange < 0)
+# 
+# ggvenn(vennTest, set_name_size = 4)
+```
+
+# Enrichment/Over-representation analysis 
+## ORA & Enrichment
+```{r}
+# Create background dataset for hypergeometric testing 
+all_genes <- as.character(rownames(resDxC1))
+
+# Extract significant genes
+signif_res <- resDxC1[resDxC1$padj < 0.05 & !is.na(resDxC1$padj), ]
+
+signif_genes <- as.character(rownames(signif_res))
+
+# Setup ranked genelist
+geneSet <- as.data.frame(signif_res)
+
+geneSetmin <- geneSet |> 
+  select(log2FoldChange) |> 
+  arrange(desc(log2FoldChange)) |> 
+  rownames_to_column(var = "ENSEMBL") |> 
+  select(ENSEMBL, everything())
+
+# # Determine invalid SYMBOL names and remove
+# valid_symbols <- keys(org.Hs.eg.db, keytype = "SYMBOL")
+# 
+# invalid_genes <- setdiff(geneSetmin$SYMBOL, valid_symbols)
+# 
+# print(invalid_genes)
+# 
+# geneSetmin <- geneSetmin |> 
+#   filter(SYMBOL %in% valid_symbols)
+# 
+# geneSetminCOPD <- geneSetminCOPD |> 
+#   filter(SYMBOL %in% valid_symbols)
+# 
+# geneSetminWild <- geneSetminWild |> 
+#   filter(SYMBOL %in% valid_symbols)
+
+# ID options
+columns(org.Hs.eg.db)
+
+# Translate gene Symbol to Entrez ID
+geneSetmin2 = bitr(geneSetmin$ENSEMBL, 
+                  fromType="ENSEMBL", 
+                  toType="SYMBOL", 
+                  OrgDb="org.Hs.eg.db")
+
+
+geneSetFinal <- geneSetmin |> 
+  full_join(geneSetmin2, by = "ENSEMBL") |> 
+  select(SYMBOL, ENSEMBL, log2FoldChange)
+
+
+# write.csv(geneSetFinal, file="TreatedVSUntreated_GeneSet.csv")
+
+```
+
+
+# GO enrichment 
+```{r}
+# Run GO enrichment analysis
+# Biological Process
+egoBP <- enrichGO(
+  gene = signif_genes,
+  universe = all_genes,
+  keyType = "ENSEMBL",
+  OrgDb = org.Hs.eg.db,
+  ont = "BP",
+  pAdjustMethod = "BH",
+  qvalueCutoff = 0.05,
+  readable = TRUE
+)
+
+head(egoBP)
+
+# Cellular Component
+egoCC <- enrichGO(
+  gene = signif_genes,
+  universe = all_genes,
+  keyType = "ENSEMBL",
+  OrgDb = org.Hs.eg.db,
+  ont = "CC",
+  pAdjustMethod = "BH",
+  qvalueCutoff = 0.05,
+  readable = TRUE
+)
+
+head(egoCC)
+
+# Molecular Function
+egoMF <- enrichGO(
+  gene = signif_genes,
+  universe = all_genes,
+  keyType = "ENSEMBL",
+  OrgDb = org.Hs.eg.db,
+  ont = "MF",
+  pAdjustMethod = "BH",
+  qvalueCutoff = 0.05,
+  readable = TRUE
+)
+
+head(egoMF)
+
+
+# Output results from GO analysis to a table
+clusterBP_summary <- data.frame(egoBP)
+
+clusterCC_summary <- data.frame(egoCC)
+
+clusterMF_summary <- data.frame(egoMF)
+```
+
+## Plot pathways and dotplots
+```{r fig.width=10, fig.height=8}
+# Visualize Biological Process
+dotplot(egoBP, showCategory = 12)
+
+goplot(egoBP)
+
+# Cellular Component
+dotplot(egoCC, showCategory = 12) 
+
+goplot(egoCC)
+
+# Molecular Function
+dotplot(egoMF, showCategory = 12)
+
+goplot(egoMF)
+```
+
+## Gene-Concept Network
+```{r fig.width=10, fig.height=8}
+# To color genes by log2 fold changes
+signif_res_lFC <- signif_res$log2FoldChange
+
+cnetplot(egoBP,
+  categorySize = "pvalue",
+  showCategory = 5,
+  foldChange = signif_res_lFC,
+  vertex.label.font = 6
+)
+
+cnetplot(egoCC,
+  categorySize = "pvalue",
+  showCategory = 5,
+  foldChange = signif_res_lFC,
+  vertex.label.font = 6
+)
+
+cnetplot(egoMF,
+  categorySize = "pvalue",
+  showCategory = 5,
+  foldChange = signif_res_lFC,
+  vertex.label.font = 6
+)
 ```
