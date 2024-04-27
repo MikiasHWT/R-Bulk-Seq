@@ -68,6 +68,8 @@ conflicts_prefer(dplyr::filter)
 
 conflicts_prefer(dplyr::slice)
 
+conflicts_prefer(dplyr::count)
+
 conflicts_prefer(SummarizedExperiment::rowRanges)
 
 ```
@@ -406,7 +408,7 @@ With higher levels of RNA expression comes higher degree of variability. In orde
 
 Plotting mean by standard deviation, we want to see a flat line for the range of expressions. 
 
-```{r}
+```{r fig.width=12, fig.height=8}
 # Raw counts Mean-SD plot
 # ranked mean
 meanSdPlot(assay(ddsDxC), ranks = FALSE, bins = 100)
@@ -608,13 +610,13 @@ columns(org.Hs.eg.db)
 # Translate gene Symbol to Entrez ID
 geneSetmin2 = bitr(geneSetmin$ENSEMBL, 
                   fromType="ENSEMBL", 
-                  toType="SYMBOL", 
+                  toType=c("SYMBOL","GENENAME", "GENETYPE", "ENTREZID"), 
                   OrgDb="org.Hs.eg.db")
 
 
 geneSetFinal <- geneSetmin |> 
-  full_join(geneSetmin2, by = "ENSEMBL") |> 
-  select(SYMBOL, ENSEMBL, log2FoldChange)
+  right_join(geneSetmin2, by = "ENSEMBL") |> 
+  select(SYMBOL, ENSEMBL, ENTREZID, log2FoldChange)
 
 
 # write.csv(geneSetFinal, file="TreatedVSUntreated_GeneSet.csv")
@@ -719,4 +721,120 @@ cnetplot(egoMF,
   foldChange = signif_res_lFC,
   vertex.label.font = 6
 )
+```
+
+# Gene Set Enrichment Analysis 
+
+GSEA analysis requires a ranked gene list, which contains:
+
+    - numeric vector: fold change or other type of numerical variable
+    - named vector: every number has a name, the corresponding gene ID
+    - sorted vector: number should be sorted in decreasing order
+
+A csv fileshould contains two columns, one for gene ID (no duplicated ID allowed) and another one for fold change. 
+```{r}
+## feature 1: numeric vector
+geneList <- geneSetFinal |> 
+  select(ENTREZID, SYMBOL, log2FoldChange) |> 
+  arrange(desc(log2FoldChange)) 
+
+## feature 2: named vector
+names(geneList$ENTREZID) = as.character(geneList$ENTREZID)
+
+```
+
+## Dotplot
+```{r}
+x <- enrichDO(geneList$ENTREZID[abs(geneList$log2FoldChange) > 1])
+
+## show most significant pathways 
+dotplot(x, showCategory = x$Description[1:12])
+```
+
+## GSEA
+```{r}
+
+# geneListMat <- geneList |> 
+#   select(SYMBOL, log2FoldChange) |> 
+#   arrange(desc(log2FoldChange))
+# 
+# geneListMat <- as.matrix(geneListMat)
+# 
+# geneList_vector <- geneListMat[, "log2FoldChange"]
+# 
+# geneList_sorted <- sort(geneList_vector, decreasing = TRUE)
+# 
+# # Perform the GSEA using KEGG gene sets:
+# gseaKEGG <- gseKEGG(
+#   geneList = geneListMat,
+#   organism = "hsa",
+#   nPerm = 1000, # default number permutations
+#   minGSSize = 5, # minimum gene set size
+#   pvalueCutoff = 0.1, # padj cutoff value
+#   verbose = FALSE
+# )
+# 
+# # Extract the GSEA results
+# gseaKEGG_results <- gseaKEGG@result
+```
+
+## Bar Plot
+```{r}
+# Bar Plot
+edo <- enrichDGN(geneList$ENTREZID[abs(geneList$log2FoldChange) > 2])
+
+barplot(edo, showCategory = 12)
+
+mutate(edo, qscore = -log(p.adjust, base = 10)) |>
+  barplot(x = "qscore")
+
+edo <- pairwise_termsim(edo)
+
+# UpSet Plot
+upsetplot(edo)
+
+# # Dot plot
+# edo2 <- gseDO(geneList)
+# 
+# ridgeplot(edo)
+# 
+# gseaplot(edo2,
+#   geneSetID = 1,
+#   by = "runningScore",
+#   title = edo2$Description[1]
+# )
+# 
+# 
+# # Gseaplot2 for GSEA result.
+# gseaplot2(edo2, geneSetID = 1, title = edo2$Description[1])
+# 
+# # Gseaplot2 for GSEA result of multile gene sets.
+# gseaplot2(edo2, geneSetID = 1:3)
+# 
+# # Gseaplot2 for GSEA result of multile gene sets(add pvalue_table)
+# gseaplot2(edo2,
+#   geneSetID = 1:3, pvalue_table = TRUE,
+#   color = c("#E495A5", "#86B875", "#7DB0DD"), ES_geom = "dot"
+# )
+# 
+# # Ranked list of genes belong to the specific gene set.
+# gsearank(edo2, 1, title = edo2[1, "Description"])
+# 
+# # Gsearank for multiple gene sets
+# pp <- lapply(1:3, function(i) {
+#   anno <- edo2[i, c("NES", "pvalue", "p.adjust")]
+#   lab <- paste0(names(anno), "=", round(anno, 3), collapse = "\n")
+# 
+#   gsearank(edo2, i, edo2[i, 2]) + xlab(NULL) + ylab(NULL) +
+#     annotate("text", 10000, edo2[i, "enrichmentScore"] * .75, label = lab, hjust = 0, vjust = 0)
+# })
+# 
+# plot_grid(plotlist = pp, ncol = 1)
+
+```
+
+
+Session Info
+```{r}
+sessionInfo()
 ```
