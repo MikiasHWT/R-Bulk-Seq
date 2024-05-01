@@ -1089,6 +1089,7 @@ kk <- enrichKEGG(
   organism = "hsa",
   pvalueCutoff = 0.05
 )
+
 head(kk)
 
 # KEGG pathway gene set enrichment analysis
@@ -1099,6 +1100,7 @@ kk2 <- gseKEGG(
   pvalueCutoff = 0.05,
   verbose = FALSE
 )
+
 head(kk2)
 
 # KEGG module over-representation analysis

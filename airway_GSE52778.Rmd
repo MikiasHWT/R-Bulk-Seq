@@ -10,49 +10,42 @@ output:
 
 ### Load Libraries 
 ```{r results='hide', message=FALSE, warning=FALSE}
-# Gene Expression Analysis
-library(airway)      # Analysis of single-cell RNA-seq datasets
+library(airway)      # RNA-seq datasets
 library(DESeq2)     # Differential gene expression analysis
-library(iSEE)       # Interactive visualization of multi-dimensional data
-library(iSEEde)     # iSEE extension for differential expression analysis
+# library(iSEE)       # Interactive multi-dimensional data visualization
+# library(iSEEde)     # iSEE extension for differential expression analysis
 library(scater)     # Single-cell analysis toolkit for expression data
 library(scuttle)    # Utilities for single-cell RNA-seq analysis
 
-# Visualization and Plotting
-library(gridExtra)      # Arrange multiple plots in a grid
-library(cowplot)        # Arrange and annotate multiple plots
-library(pheatmap)       # Creation of heatmaps
+library(gridExtra)      # Arrange plots in a grid
+library(cowplot)        # Arrange and annotate plots
+library(pheatmap)       # Create heatmaps
 library(RColorBrewer)   # Color palettes for plots
-library(EnhancedVolcano)# Volcano plots for differential expression analysis
+library(EnhancedVolcano)# Volcano plots for differential expression
 library(ggvenn)         # Venn diagrams using ggplot2
-library(ggupset)        # UpSet plots for visualizing set intersections
+library(ggupset)        # UpSet plots for set intersections
 library(ggstance)       # Horizontal versions of ggplot2 geoms
 
-# Statistical Analysis and Testing
 library(qvalue)     # Estimation of q-values
 library(vsn)        # Variance stabilization and normalization
 library(apeglm)     # Adaptive shrinkage for differential expression
 library(ashr)       # Empirical Bayes shrinkage estimation
 
-# Data Management and Manipulation
 library(conflicted) # Conflict resolution for function names
-library(tidyverse)  # Collection of packages for data manipulation and visualization
+library(tidyverse)  # Data manipulation and visualization
 
-# Biological Databases and Annotation
-library(org.Mm.eg.db)  # Annotation package for the mouse genome
-library(org.Hs.eg.db)  # Annotation package for the human genome
-library(AnnotationHub) # Access to various biological annotation resources
+library(org.Mm.eg.db)  # Annotation package for mouse genome
+library(org.Hs.eg.db)  # Annotation package for human genome
+library(AnnotationHub) # Access to biological annotation resources
 library(ensembldb)     # Annotation package for Ensembl databases
-library(biomaRt)       # Interface to BioMart biological databases
+library(biomaRt)       # Interface to BioMart databases
 
-# Pathway and Functional Analysis
 library(DOSE)           # Disease ontology and pathway analysis
 library(pathview)       # Pathway-based data integration and visualization
 library(clusterProfiler) # Gene set enrichment analysis
 library(enrichplot)     # Visualization of enrichment analysis results
 library(ReactomePA)     # Pathway analysis using Reactome database
 
-# Other Topics
 library(GEOquery)       # Access to Gene Expression Omnibus (GEO) datasets
 library(europepmc)      # Access to European PubMed Central literature data
 library(bigmemory)      # Management and analysis of large datasets in memory
