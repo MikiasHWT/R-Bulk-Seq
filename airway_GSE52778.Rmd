@@ -12,8 +12,6 @@ output:
 ```{r results='hide', message=FALSE, warning=FALSE}
 library(airway)      # RNA-seq datasets
 library(DESeq2)     # Differential gene expression analysis
-# library(iSEE)       # Interactive multi-dimensional data visualization
-# library(iSEEde)     # iSEE extension for differential expression analysis
 library(scater)     # Single-cell analysis toolkit for expression data
 library(scuttle)    # Utilities for single-cell RNA-seq analysis
 
@@ -74,8 +72,6 @@ conflicts_prefer(SummarizedExperiment::rowRanges)
 data(airway)
 
 rse <- airway
-
-rse
 
 #extract counts
 counts <- as.data.frame(assays(rse)$counts)
